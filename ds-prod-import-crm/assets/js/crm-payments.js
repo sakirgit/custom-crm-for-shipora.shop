@@ -13,7 +13,7 @@
 	const canDelete = root.dataset.canDelete === '1';
 	const showSuppliers = root.dataset.showSuppliers === '1';
 	const canRecordSupplier = root.dataset.canRecordSupplier === '1';
-	const colCount = isClient ? 6 : 8;
+	const colCount = isClient ? 7 : 9;
 	const supplierColCount = 8;
 	const clientsPanel = root.querySelector('.ds-crm-payments-clients');
 	const suppliersPanel = root.querySelector('.ds-crm-payments-suppliers');
@@ -86,6 +86,8 @@
 	let companiesLoaded = false;
 	let lastSuggestedAmount = null;
 	let lastSuggestedSupplierAmount = null;
+	let lastClientSummary = null;
+	let lastOrderSummary = null;
 	let activeTab = root.dataset.paymentsTab === 'suppliers' && showSuppliers ? 'suppliers' : 'clients';
 	let supplierListLoaded = false;
 	let clientSummary = [];
@@ -221,6 +223,7 @@
 	};
 
 	const clearOrderPreview = () => {
+		lastOrderSummary = null;
 		if (orderPreviewWrap) {
 			orderPreviewWrap.hidden = true;
 		}
@@ -229,7 +232,63 @@
 		}
 	};
 
+	const getSelectedPurpose = () => form?.querySelector('[name="payment_purpose"]:checked')?.value || '';
+
+	const setPaymentPurpose = (purpose) => {
+		form?.querySelectorAll('[name="payment_purpose"]').forEach((input) => {
+			input.checked = input.value === purpose;
+		});
+	};
+
+	const suggestAmountForPurpose = () => {
+		if (!amountInput) {
+			return;
+		}
+		const purpose = getSelectedPurpose();
+		const summary = lastOrderSummary || lastClientSummary;
+		if (!summary || !purpose) {
+			return;
+		}
+		const due =
+			purpose === 'delivery_bill'
+				? parseFloat(summary.delivery_due || 0)
+				: parseFloat(summary.order_due || 0);
+		const current = amountInput.value;
+		const matchesSuggestion = !current || current === lastSuggestedAmount;
+		if (!matchesSuggestion) {
+			return;
+		}
+		if (due > 0) {
+			amountInput.value = due.toFixed(2);
+			lastSuggestedAmount = amountInput.value;
+		} else {
+			amountInput.value = '';
+			lastSuggestedAmount = '';
+		}
+	};
+
+	const purposeDueHint = (summary) => {
+		if (!summary) {
+			return '';
+		}
+		const orderDue = parseFloat(summary.order_due || 0);
+		const deliveryDue = parseFloat(summary.delivery_due || 0);
+		const deliveryBill = parseFloat(summary.delivery_bill || 0);
+		const deliveryPaid = parseFloat(summary.delivery_paid || 0);
+		if (deliveryDue <= 0 && deliveryBill > 0) {
+			return `<p class="description ds-crm-payment-purpose-hint">Delivery bill ${formatAmount(deliveryBill)} is already fully paid (${formatAmount(deliveryPaid)}). Remaining due is order/product only — choose <strong>Order bill</strong>.</p>`;
+		}
+		if (deliveryDue <= 0 && deliveryBill <= 0) {
+			return `<p class="description ds-crm-payment-purpose-hint">No delivery/shipping bill recorded yet for this client. Use <strong>Order bill</strong> for product dues, or create a delivery first if shipping should be billed.</p>`;
+		}
+		if (orderDue <= 0 && deliveryDue > 0) {
+			return `<p class="description ds-crm-payment-purpose-hint">Order/product is fully paid. Remaining due is delivery — choose <strong>Delivery bill</strong>.</p>`;
+		}
+		return '';
+	};
+
 	const clearClientPreview = () => {
+		lastClientSummary = null;
 		if (clientPreviewWrap) {
 			clientPreviewWrap.hidden = true;
 		}
@@ -260,18 +319,29 @@
 				<strong>${escapeHtml(client.name)}</strong>
 				${client.phone ? `<span class="description">${escapeHtml(client.phone)}</span>` : ''}
 			</div>
-			<p class="description">${openOrders} open order${openOrders === 1 ? '' : 's'} — payments apply to the whole client balance (oldest order first).</p>
-			<div class="ds-crm-order-stats ds-crm-order-stats--compact">
-				${stat('Total bill', formatAmount(summary.total_bill))}
-				${stat('Paid', formatAmount(summary.total_paid))}
-				${stat('Due', formatAmount(summary.total_due), summary.total_due > 0 ? 'ds-crm-stat-card--due' : 'ds-crm-stat-card--ok')}
+			<p class="description">${openOrders} open order${openOrders === 1 ? '' : 's'} — choose Order bill or Delivery bill below so this payment reduces the correct due.</p>
+			<div class="ds-crm-payment-dues-stack">
+				<div class="ds-crm-order-stats ds-crm-order-stats--compact ds-crm-payment-dues-row">
+					${stat('Total bill', formatAmount(summary.total_bill))}
+					${stat('Paid', formatAmount(summary.total_paid))}
+					${stat('Due', formatAmount(summary.total_due), summary.total_due > 0 ? 'ds-crm-stat-card--due' : 'ds-crm-stat-card--ok')}
+				</div>
+				<div class="ds-crm-order-stats ds-crm-order-stats--compact ds-crm-payment-dues-row">
+					${stat('Order bill', formatAmount(summary.order_bill))}
+					${stat('Order paid', formatAmount(summary.order_paid))}
+					${stat('Order due', formatAmount(summary.order_due), summary.order_due > 0 ? 'ds-crm-stat-card--due' : '')}
+				</div>
+				<div class="ds-crm-order-stats ds-crm-order-stats--compact ds-crm-payment-dues-row">
+					${stat('Delivery bill', formatAmount(summary.delivery_bill))}
+					${stat('Delivery paid', formatAmount(summary.delivery_paid))}
+					${stat('Delivery due', formatAmount(summary.delivery_due), summary.delivery_due > 0 ? 'ds-crm-stat-card--due' : '')}
+				</div>
 			</div>
-			<div class="ds-crm-order-stats ds-crm-order-stats--compact">
-				${stat('Order due', formatAmount(summary.order_due), summary.order_due > 0 ? 'ds-crm-stat-card--due' : '')}
-				${stat('Delivery due', formatAmount(summary.delivery_due), summary.delivery_due > 0 ? 'ds-crm-stat-card--due' : '')}
-			</div>
+			${purposeDueHint(summary)}
 		`;
 		clientPreviewWrap.hidden = false;
+		lastClientSummary = summary || null;
+		suggestAmountForPurpose();
 	};
 
 	const loadClientPreview = async (clientId, { suggestAmount = false } = {}) => {
@@ -293,11 +363,6 @@
 
 		const { client, summary, open_orders: openOrders } = result.data;
 		renderClientPreview(client, summary, openOrders || 0);
-
-		if (suggestAmount && amountInput && summary.total_due > 0) {
-			amountInput.value = parseFloat(summary.total_due).toFixed(2);
-			lastSuggestedAmount = amountInput.value;
-		}
 	};
 
 	const renderOrderPreview = (order, summary, itemCount, clientSummary = null) => {
@@ -327,7 +392,7 @@
 					<span class="ds-crm-meta-value">${itemCount}</span>
 				</div>
 			</div>
-			<p class="description">Allocated share of client payments for this order (oldest orders paid first).</p>
+			<p class="description">Choose purpose below. Allocated share for this order (oldest orders first within that purpose).</p>
 			<div class="ds-crm-order-stats ds-crm-order-stats--compact">
 				${stat('Total bill', formatAmount(summary.total_bill))}
 				${stat('Paid', formatAmount(summary.total_paid))}
@@ -365,12 +430,9 @@
 
 		const { order, summary, item_count: itemCount, client_summary: clientSummary } = result.data;
 		clearClientPreview();
+		lastOrderSummary = summary || null;
 		renderOrderPreview(order, summary, itemCount, clientSummary);
-
-		if (suggestAmount && amountInput && summary.total_due > 0) {
-			amountInput.value = parseFloat(summary.total_due).toFixed(2);
-			lastSuggestedAmount = amountInput.value;
-		}
+		suggestAmountForPurpose();
 	};
 
 	const populateClientOptions = (clients, selectEl, includeEmpty = true) => {
@@ -599,6 +661,7 @@
 				<td>${escapeHtml(item.payment_number)}</td>
 				${clientCell}
 				<td>${escapeHtml(item.order_number || '—')}</td>
+				<td>${escapeHtml(item.payment_purpose_label || item.payment_purpose || '—')}</td>
 				<td class="ds-crm-datetime">${formatListDateTime(item, 'payment_date')}</td>
 				<td class="ds-crm-amount-cell">${formatAmount(item.amount)}</td>
 				<td>${escapeHtml(formatMethod(item.payment_method))}</td>
@@ -736,6 +799,7 @@
 		populateOrderOptions([]);
 		clearOrderPreview();
 		clearClientPreview();
+		setPaymentPurpose('');
 		const today = new Date().toISOString().slice(0, 10);
 		form.querySelector('[name="payment_date"]').value = today;
 		lastSuggestedAmount = null;
@@ -766,8 +830,14 @@
 				form.querySelector('[name="payment_method"]').value = item.payment_method || '';
 				form.querySelector('[name="reference"]').value = item.reference || '';
 				form.querySelector('[name="notes"]').value = item.notes || '';
+				const purpose = item.payment_purpose === 'delivery_bill' || item.payment_purpose === 'order_bill'
+					? item.payment_purpose
+					: '';
+				setPaymentPurpose(purpose);
 				if (item.order_id) {
 					await loadOrderPreview(item.order_id);
+				} else {
+					await loadClientPreview(item.client_id);
 				}
 			} finally {
 				DsCrmUI.hideModalLoading(modal);
@@ -803,10 +873,40 @@
 		const clientId = parseInt(clientSelect.value, 10);
 		const paymentDate = form.querySelector('[name="payment_date"]').value;
 		const amount = parseFloat(form.querySelector('[name="amount"]').value);
+		const purpose = form.querySelector('[name="payment_purpose"]:checked')?.value || '';
 
 		if (!clientId || !paymentDate || !amount || amount <= 0) {
 			setFormError(errorBox, 'Client, date, and a valid amount are required.');
 			return;
+		}
+		if (purpose !== 'order_bill' && purpose !== 'delivery_bill') {
+			setFormError(errorBox, 'Select whether this payment is for Order bill or Delivery bill.');
+			return;
+		}
+
+		const previewSummary = lastOrderSummary || lastClientSummary;
+		if (previewSummary) {
+			const purposeDue =
+				purpose === 'delivery_bill'
+					? parseFloat(previewSummary.delivery_due || 0)
+					: parseFloat(previewSummary.order_due || 0);
+			if (purposeDue <= 0.009) {
+				const label = purpose === 'delivery_bill' ? 'Delivery due' : 'Order due';
+				const ok = window.confirm(
+					`${label} is ৳0.00 right now. Saving as ${purpose === 'delivery_bill' ? 'Delivery bill' : 'Order bill'} will not reduce the other due type. Continue anyway?`
+				);
+				if (!ok) {
+					return;
+				}
+			} else if (amount - purposeDue > 0.009) {
+				const label = purpose === 'delivery_bill' ? 'Delivery due' : 'Order due';
+				const ok = window.confirm(
+					`Amount (${amount.toFixed(2)}) is higher than ${label} (${purposeDue.toFixed(2)}). Extra will stay unused for that purpose until new bills appear. Continue?`
+				);
+				if (!ok) {
+					return;
+				}
+			}
 		}
 
 		form.querySelectorAll('.ds-crm-invalid').forEach((el) => el.classList.remove('ds-crm-invalid'));
@@ -815,6 +915,7 @@
 			id: form.querySelector('[name="id"]').value,
 			client_id: clientId,
 			order_id: form.querySelector('[name="order_id"]').value || 0,
+			payment_purpose: purpose,
 			payment_date: paymentDate,
 			amount,
 			payment_method: form.querySelector('[name="payment_method"]').value,
@@ -1058,6 +1159,12 @@
 			return;
 		}
 		loadOrderPreview(orderId, { suggestAmount });
+	});
+
+	form?.querySelectorAll('[name="payment_purpose"]').forEach((input) => {
+		input.addEventListener('change', () => {
+			suggestAmountForPurpose();
+		});
 	});
 
 	tbody?.addEventListener('click', (e) => {

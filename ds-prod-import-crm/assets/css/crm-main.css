@@ -1290,6 +1290,26 @@ body.ds-crm-nav-open {
 	color: #92400e;
 }
 
+.ds-crm-badge-unpaid {
+	background: #fee2e2;
+	color: #991b1b;
+}
+
+.ds-crm-badge-partial {
+	background: #ffedd5;
+	color: #9a3412;
+}
+
+.ds-crm-badge-paid {
+	background: #dcfce7;
+	color: #166534;
+}
+
+.ds-crm-badge-none {
+	background: #f3f4f6;
+	color: #4b5563;
+}
+
 .ds-crm-badge-awaiting_acceptance {
 	background: #fee2e2;
 	color: #991b1b;
@@ -2137,8 +2157,22 @@ body.ds-crm-nav-open {
 .ds-crm-reports-output-toolbar {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 8px;
+	align-items: center;
+	gap: 8px 12px;
 	margin-bottom: 16px;
+}
+
+.ds-crm-reports-print-hint {
+	margin: 0;
+	color: #6b7280;
+}
+
+.ds-crm-report-dues-stack {
+	margin: 0 0 16px;
+}
+
+.ds-crm-report-print-only {
+	display: none;
 }
 
 .ds-crm-report-title {
@@ -2334,6 +2368,35 @@ body.ds-crm-nav-open {
 	margin: 0 0 18px;
 }
 
+.ds-crm-payment-purpose-field {
+	margin: 0 0 18px;
+}
+
+.ds-crm-payment-purpose-options {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px 16px;
+	margin: 6px 0 4px;
+}
+
+.ds-crm-payment-purpose-option {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0;
+	padding: 8px 12px;
+	border: 1px solid var(--ds-crm-border);
+	border-radius: 8px;
+	background: #fff;
+	cursor: pointer;
+	font-weight: 600;
+}
+
+.ds-crm-payment-purpose-option:has(input:checked) {
+	border-color: var(--ds-crm-accent);
+	background: #f0f7ff;
+}
+
 .ds-crm-payment-form .ds-crm-modal-body {
 	padding: 20px 24px 8px;
 }
@@ -2404,6 +2467,38 @@ body.ds-crm-nav-open {
 	background: #f0f9ff;
 	border: 1px solid #bae6fd;
 	border-radius: 10px;
+}
+
+.ds-crm-payment-order-preview-inner > .description,
+.ds-crm-payment-client-preview-inner > .description {
+	margin: 0 0 12px;
+}
+
+.ds-crm-payment-dues-stack {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.ds-crm-payment-dues-row {
+	margin: 0;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+}
+
+.ds-crm-payment-dues-row .ds-crm-stat-card {
+	min-width: 0;
+	padding: 12px 14px;
+}
+
+.ds-crm-payment-purpose-hint {
+	margin: 12px 0 0;
+}
+
+@media (max-width: 640px) {
+	.ds-crm-payment-dues-row {
+		grid-template-columns: 1fr;
+	}
 }
 
 .ds-crm-payment-order-preview-head {

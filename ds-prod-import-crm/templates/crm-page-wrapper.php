@@ -30,7 +30,12 @@ $modules = array(
 	'companies'          => array( 'label' => __( 'Companies', 'ds-prod-import-crm' ), 'icon' => '🏢' ),
 	'products'           => array( 'label' => __( 'Products', 'ds-prod-import-crm' ), 'icon' => '🛍' ),
 	'product-categories' => array( 'label' => __( 'Categories', 'ds-prod-import-crm' ), 'icon' => '🏷' ),
-	'reports'            => array( 'label' => __( 'Reports', 'ds-prod-import-crm' ), 'icon' => '📈' ),
+	'reports'            => array(
+		'label' => CRM_Client_Portal::is_client_user()
+			? __( 'My report', 'ds-prod-import-crm' )
+			: __( 'Reports', 'ds-prod-import-crm' ),
+		'icon'  => '📈',
+	),
 	'order-statuses'     => array( 'label' => __( 'Order Statuses', 'ds-prod-import-crm' ), 'icon' => '🏷' ),
 	'team'               => array( 'label' => __( 'Team & access', 'ds-prod-import-crm' ), 'icon' => '👤' ),
 	'activity'           => array( 'label' => __( 'Activity log', 'ds-prod-import-crm' ), 'icon' => '📝' ),

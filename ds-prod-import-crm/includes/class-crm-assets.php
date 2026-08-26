@@ -16,7 +16,7 @@ class CRM_Assets {
 	/**
 	 * Asset version.
 	 */
-	const VERSION = '0.32.3';
+	const VERSION = '0.34.2';
 
 	/**
 	 * Timezone config for JavaScript (camelCase keys).

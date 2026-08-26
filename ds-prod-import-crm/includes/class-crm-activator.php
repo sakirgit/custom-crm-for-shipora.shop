@@ -16,7 +16,7 @@ class CRM_Activator {
 	/**
 	 * Database schema version.
 	 */
-	const DB_VERSION = '0.10.0';
+	const DB_VERSION = '0.11.0';
 
 	/**
 	 * Create/upgrade plugin tables.
@@ -253,6 +253,7 @@ class CRM_Activator {
 				payment_number VARCHAR(50) NOT NULL UNIQUE,
 				client_id INT NOT NULL,
 				order_id INT,
+				payment_purpose VARCHAR(20) NOT NULL DEFAULT 'auto',
 				payment_date DATE NOT NULL,
 				amount DECIMAL(12,2) NOT NULL,
 				payment_method VARCHAR(100),
@@ -261,7 +262,8 @@ class CRM_Activator {
 				created_by INT,
 				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 				INDEX idx_client_id (client_id),
-				INDEX idx_order_id (order_id)
+				INDEX idx_order_id (order_id),
+				INDEX idx_payment_purpose (payment_purpose)
 			) {$charset_collate};",
 			"CREATE TABLE {$prefix}client_bills (
 				id INT AUTO_INCREMENT PRIMARY KEY,
@@ -422,6 +424,10 @@ class CRM_Activator {
 
 		if ( version_compare( $installed, '0.10.0', '<' ) ) {
 			self::upgrade_0100();
+		}
+
+		if ( version_compare( $installed, '0.11.0', '<' ) ) {
+			self::upgrade_0110();
 		}
 
 		if ( version_compare( $installed, self::DB_VERSION, '<' ) ) {
@@ -1180,6 +1186,29 @@ class CRM_Activator {
 		if ( empty( $has_missing ) ) {
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$wpdb->query( "ALTER TABLE {$items_table} ADD COLUMN missing_quantity INT NOT NULL DEFAULT 0 AFTER quantity" );
+		}
+	}
+
+	/**
+	 * Client payment purpose: order bill vs delivery bill (legacy rows = auto).
+	 *
+	 * @return void
+	 */
+	private static function upgrade_0110() {
+		global $wpdb;
+
+		$payments_table = $wpdb->prefix . 'crm_payments';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$has = $wpdb->get_results( "SHOW COLUMNS FROM `{$payments_table}` LIKE 'payment_purpose'" );
+		if ( empty( $has ) ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query(
+				"ALTER TABLE {$payments_table}
+				ADD COLUMN payment_purpose VARCHAR(20) NOT NULL DEFAULT 'auto' AFTER order_id"
+			);
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query( "ALTER TABLE {$payments_table} ADD INDEX idx_payment_purpose (payment_purpose)" );
 		}
 	}
 }

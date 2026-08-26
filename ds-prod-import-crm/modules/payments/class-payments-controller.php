@@ -263,6 +263,14 @@ class Payments_Controller extends CRM_Controller_Base {
 		$items       = $wpdb->get_results( $wpdb->prepare( $list_sql, $list_params ), ARRAY_A );
 		$total_pages = $pagination['per_page'] > 0 ? (int) ceil( $total / $pagination['per_page'] ) : 1;
 
+		if ( $items ) {
+			foreach ( $items as &$item ) {
+				$item['payment_purpose']       = CRM_Ledger::normalize_payment_purpose( $item['payment_purpose'] ?? 'auto' );
+				$item['payment_purpose_label'] = CRM_Ledger::payment_purpose_label( $item['payment_purpose'] );
+			}
+			unset( $item );
+		}
+
 		$is_client     = CRM_Client_Portal::is_client_user();
 		$client_balance = null;
 		if ( $is_client ) {
@@ -305,6 +313,7 @@ class Payments_Controller extends CRM_Controller_Base {
 		self::verify_module_save( 'crm_payments_create', 'crm_payments_edit', 'crm_manage_payments', $id );
 		$client_id     = isset( $_POST['client_id'] ) ? absint( $_POST['client_id'] ) : 0;
 		$order_id      = isset( $_POST['order_id'] ) ? absint( $_POST['order_id'] ) : 0;
+		$purpose_raw   = isset( $_POST['payment_purpose'] ) ? wp_unslash( $_POST['payment_purpose'] ) : '';
 		$payment_date  = isset( $_POST['payment_date'] ) ? crm_normalize_date( wp_unslash( $_POST['payment_date'] ) ) : '';
 		$amount        = isset( $_POST['amount'] ) ? crm_parse_amount( wp_unslash( $_POST['amount'] ) ) : 0;
 		$method        = isset( $_POST['payment_method'] ) ? sanitize_text_field( wp_unslash( $_POST['payment_method'] ) ) : '';
@@ -315,22 +324,33 @@ class Payments_Controller extends CRM_Controller_Base {
 			wp_send_json_error( array( 'message' => __( 'Client, date, and amount are required.', 'ds-prod-import-crm' ) ) );
 		}
 
+		$payment_purpose = CRM_Ledger::normalize_payment_purpose( $purpose_raw );
+		if ( ! in_array( $payment_purpose, array( 'order_bill', 'delivery_bill' ), true ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'Select whether this payment is for Order bill or Delivery bill.', 'ds-prod-import-crm' ),
+				)
+			);
+		}
+
 		$table = crm_table( 'payments' );
 		$data  = array(
-			'client_id'      => $client_id,
-			'order_id'       => $order_id > 0 ? $order_id : null,
-			'payment_date'   => $payment_date,
-			'amount'         => $amount,
-			'payment_method' => $method,
-			'reference'      => $reference,
-			'notes'          => $notes,
+			'client_id'        => $client_id,
+			'order_id'         => $order_id > 0 ? $order_id : null,
+			'payment_purpose'  => $payment_purpose,
+			'payment_date'     => $payment_date,
+			'amount'           => $amount,
+			'payment_method'   => $method,
+			'reference'        => $reference,
+			'notes'            => $notes,
 		);
 
 		$labels = array(
-			'payment_date'   => __( 'Date', 'ds-prod-import-crm' ),
-			'amount'         => __( 'Amount', 'ds-prod-import-crm' ),
-			'payment_method' => __( 'Method', 'ds-prod-import-crm' ),
-			'reference'      => __( 'Reference', 'ds-prod-import-crm' ),
+			'payment_date'     => __( 'Date', 'ds-prod-import-crm' ),
+			'amount'           => __( 'Amount', 'ds-prod-import-crm' ),
+			'payment_purpose'  => __( 'Purpose', 'ds-prod-import-crm' ),
+			'payment_method'   => __( 'Method', 'ds-prod-import-crm' ),
+			'reference'        => __( 'Reference', 'ds-prod-import-crm' ),
 		);
 
 		if ( $id ) {
@@ -341,7 +361,7 @@ class Payments_Controller extends CRM_Controller_Base {
 				$table,
 				$data,
 				array( 'id' => $id ),
-				array( '%d', '%d', '%s', '%f', '%s', '%s', '%s', '%d' ),
+				array( '%d', '%d', '%s', '%s', '%f', '%s', '%s', '%s', '%d' ),
 				array( '%d' )
 			);
 
@@ -352,18 +372,20 @@ class Payments_Controller extends CRM_Controller_Base {
 			$payment_number = $before['payment_number'] ?? '';
 			$changes        = $before ? CRM_Audit::describe_changes( $before, $data, $labels ) : array();
 			$meta           = array(
-				'order_id' => $order_id > 0 ? $order_id : (int) ( $before['order_id'] ?? 0 ),
-				'amount'   => $amount,
-				'changes'  => $changes,
+				'order_id'         => $order_id > 0 ? $order_id : (int) ( $before['order_id'] ?? 0 ),
+				'payment_purpose'  => $payment_purpose,
+				'amount'           => $amount,
+				'changes'          => $changes,
 			);
 			self::log_activity(
 				'update',
 				'payments',
 				$id,
 				sprintf(
-					'Updated payment %s (%s)',
+					'Updated payment %s (%s · %s)',
 					$payment_number,
-					crm_format_amount( $amount )
+					crm_format_amount( $amount ),
+					CRM_Ledger::payment_purpose_label( $payment_purpose )
 				),
 				$meta
 			);
@@ -373,18 +395,19 @@ class Payments_Controller extends CRM_Controller_Base {
 			$inserted = $wpdb->insert(
 				$table,
 				array(
-					'payment_number' => $payment_number,
-					'client_id'      => $client_id,
-					'order_id'       => $order_id > 0 ? $order_id : 0,
-					'payment_date'   => $payment_date,
-					'amount'         => $amount,
-					'payment_method' => $method,
-					'reference'      => $reference,
-					'notes'          => $notes,
-					'created_by'     => CRM_Audit::current_user_id(),
-					'created_at'     => current_time( 'mysql' ),
+					'payment_number'  => $payment_number,
+					'client_id'       => $client_id,
+					'order_id'        => $order_id > 0 ? $order_id : 0,
+					'payment_purpose' => $payment_purpose,
+					'payment_date'    => $payment_date,
+					'amount'          => $amount,
+					'payment_method'  => $method,
+					'reference'       => $reference,
+					'notes'           => $notes,
+					'created_by'      => CRM_Audit::current_user_id(),
+					'created_at'      => current_time( 'mysql' ),
 				),
-				array( '%s', '%d', '%d', '%s', '%f', '%s', '%s', '%s', '%d', '%s' )
+				array( '%s', '%d', '%d', '%s', '%s', '%f', '%s', '%s', '%s', '%d', '%s' )
 			);
 
 			if ( ! $inserted ) {
@@ -401,17 +424,22 @@ class Payments_Controller extends CRM_Controller_Base {
 					)
 				);
 			}
-			$desc = $order_ref
-				? sprintf( 'Recorded payment %s of %s for %s', $payment_number, crm_format_amount( $amount ), $order_ref )
-				: sprintf( 'Recorded payment %s of %s', $payment_number, crm_format_amount( $amount ) );
+			$desc = sprintf(
+				'Recorded payment %s of %s (%s)%s',
+				$payment_number,
+				crm_format_amount( $amount ),
+				CRM_Ledger::payment_purpose_label( $payment_purpose ),
+				$order_ref ? ' · ' . $order_ref : ''
+			);
 			self::log_activity(
 				'create',
 				'payments',
 				$id,
 				$desc,
 				array(
-					'order_id' => $order_id,
-					'amount'   => $amount,
+					'order_id'         => $order_id,
+					'payment_purpose'  => $payment_purpose,
+					'amount'           => $amount,
 				)
 			);
 		}

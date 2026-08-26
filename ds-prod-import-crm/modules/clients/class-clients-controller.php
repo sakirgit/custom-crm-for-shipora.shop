@@ -403,6 +403,14 @@ class Clients_Controller extends CRM_Controller_Base {
 			ARRAY_A
 		);
 
+		if ( $payments ) {
+			foreach ( $payments as $index => $payment ) {
+				$purpose = CRM_Ledger::normalize_payment_purpose( $payment['payment_purpose'] ?? 'auto' );
+				$payments[ $index ]['payment_purpose']       = $purpose;
+				$payments[ $index ]['payment_purpose_label'] = CRM_Ledger::payment_purpose_label( $purpose );
+			}
+		}
+
 		wp_send_json_success(
 			array(
 				'client'   => $client,

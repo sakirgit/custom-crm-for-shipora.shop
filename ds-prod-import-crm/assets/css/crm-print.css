@@ -1,4 +1,14 @@
+/* Screen: print-only blocks stay hidden */
+.ds-crm-report-print-only {
+	display: none !important;
+}
+
 @media print {
+	@page {
+		size: A4 portrait;
+		margin: 10mm 8mm;
+	}
+
 	.ds-crm-sidebar,
 	.ds-crm-topbar,
 	.ds-crm-page-header,
@@ -6,15 +16,30 @@
 	.ds-crm-reports-tabs,
 	.ds-crm-reports-panels,
 	.ds-crm-reports-output-toolbar,
+	.ds-crm-report-screen-only,
 	.no-print {
 		display: none !important;
+	}
+
+	.ds-crm-report-print-only {
+		display: block !important;
+	}
+
+	html,
+	body {
+		background: #fff !important;
+		color: #111 !important;
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
 	}
 
 	.ds-crm-app,
 	.ds-crm-content,
 	.ds-crm-module,
+	.ds-crm-module-page,
 	.ds-crm-reports-output,
-	.ds-crm-reports-print-area {
+	.ds-crm-reports-print-area,
+	.ds-crm-reports-result {
 		display: block !important;
 		width: 100% !important;
 		max-width: 100% !important;
@@ -23,40 +48,164 @@
 		box-shadow: none !important;
 		border: none !important;
 		background: #fff !important;
+		overflow: visible !important;
+	}
+
+	/* Kill scroll containers — PDFs cannot scroll */
+	.ds-crm-table-wrap,
+	.ds-crm-reports-print-area,
+	.ds-crm-reports-result,
+	.ds-crm-ledger-section {
+		overflow: visible !important;
+		max-width: 100% !important;
+		border: none !important;
+		border-radius: 0 !important;
+		background: transparent !important;
+		scrollbar-width: none !important;
+	}
+
+	.ds-crm-table-wrap::-webkit-scrollbar {
+		display: none !important;
+		width: 0 !important;
+		height: 0 !important;
 	}
 
 	.ds-crm-report-print-header {
 		display: flex !important;
 		align-items: center;
-		gap: 16px;
-		margin-bottom: 20px;
-		padding-bottom: 12px;
+		gap: 12px;
+		margin-bottom: 14px;
+		padding-bottom: 8px;
 		border-bottom: 2px solid #e5e7eb;
 	}
 
 	.ds-crm-report-print-logo {
-		max-height: 48px;
-		max-width: 160px;
+		max-height: 40px;
+		max-width: 140px;
 		object-fit: contain;
 	}
 
 	.ds-crm-report-print-company {
 		display: block;
-		font-size: 18px;
+		font-size: 16px;
 	}
 
 	.ds-crm-report-print-meta {
 		display: block;
-		font-size: 12px;
+		font-size: 11px;
 		color: #6b7280;
-		margin-top: 4px;
+		margin-top: 2px;
 	}
 
-	.ds-crm-table {
+	.ds-crm-report-title {
+		font-size: 16px !important;
+		margin: 0 0 4px !important;
+	}
+
+	.ds-crm-report-subtitle,
+	.ds-crm-report-note,
+	.ds-crm-ledger-summary-title,
+	.ds-crm-ledger-section > h3 {
+		font-size: 12px !important;
+		margin: 0 0 8px !important;
+	}
+
+	.ds-crm-report-print-caption {
+		margin: 12px 0 6px;
 		font-size: 11px;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: #374151;
+	}
+
+	.ds-crm-report-print-caption:first-child {
+		margin-top: 0;
+	}
+
+	.ds-crm-order-stats,
+	.ds-crm-payment-dues-stack,
+	.ds-crm-report-dues-stack {
+		display: grid !important;
+		grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+		gap: 6px !important;
+		margin: 0 0 10px !important;
+	}
+
+	.ds-crm-payment-dues-row {
+		display: contents !important;
 	}
 
 	.ds-crm-stat-card {
+		padding: 6px 8px !important;
+		border-radius: 4px !important;
 		break-inside: avoid;
+	}
+
+	.ds-crm-stat-label {
+		font-size: 8px !important;
+	}
+
+	.ds-crm-stat-value {
+		font-size: 11px !important;
+	}
+
+	.ds-crm-table,
+	.ds-crm-report-table,
+	.ds-crm-report-table--print,
+	.ds-crm-report-table--print-fit {
+		width: 100% !important;
+		max-width: 100% !important;
+		table-layout: fixed !important;
+		border-collapse: collapse !important;
+		font-size: 9px !important;
+		line-height: 1.25 !important;
+	}
+
+	.ds-crm-table th,
+	.ds-crm-table td,
+	.ds-crm-report-table th,
+	.ds-crm-report-table td {
+		padding: 4px 5px !important;
+		word-wrap: break-word !important;
+		overflow-wrap: anywhere !important;
+		white-space: normal !important;
+		vertical-align: top !important;
+		border-color: #d1d5db !important;
+	}
+
+	.ds-crm-table thead th {
+		background: #f3f4f6 !important;
+		font-size: 8px !important;
+	}
+
+	.ds-crm-badge {
+		display: inline-block;
+		padding: 1px 4px !important;
+		font-size: 8px !important;
+		border-radius: 3px !important;
+		white-space: nowrap;
+	}
+
+	.ds-crm-stat-card,
+	.ds-crm-ledger-summary,
+	.ds-crm-report-print-orders table {
+		break-inside: avoid;
+	}
+
+	.ds-crm-ledger-section {
+		break-inside: auto;
+		margin: 0 0 14px !important;
+	}
+
+	.ds-crm-report-full-ledger {
+		margin-top: 16px;
+		padding-top: 12px;
+		border-top: 1px solid #e5e7eb;
+	}
+
+	/* Ledger tables: slightly denser */
+	.ds-crm-report-full-ledger .ds-crm-table {
+		font-size: 8.5px !important;
 	}
 }

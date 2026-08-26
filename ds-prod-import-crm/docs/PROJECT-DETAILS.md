@@ -47,7 +47,7 @@ BD warehouse receives cargo       ←── stock up + supplier shipping bill
         ↓
 BD delivers to client             ←── partial OK + delivery shipping bill
         ↓
-Client payments allocated FIFO across order + delivery bills
+Client payments allocated by purpose (order vs delivery), FIFO within each pool
         ↓
 Order may auto-complete when fully paid (configurable)
 ```
@@ -170,7 +170,7 @@ All tables use the WordPress prefix + `crm_` (example: `wp_crm_orders`).
 | `stock` | On-hand stock by product name / color / size |
 | `deliveries` | Client delivery documents |
 | `delivery_items` | Delivery line quantities / weights / shipping |
-| `payments` | Client payments (pooled; optional order reference) |
+| `payments` | Client payments (purpose: order_bill / delivery_bill / auto; optional order reference) |
 | `client_bills` | Order bills and shipping/delivery bills |
 | `company_bills` | Manual supplier bills |
 | `company_payments` | Payments to suppliers |
@@ -309,8 +309,12 @@ Schema upgrades are versioned in `CRM_Activator::maybe_upgrade()` so production 
 - Staff page has two tabs:
   - **From clients** — money received from customers
   - **To suppliers** — money paid to cargo companies / suppliers
-- Client payments: client, amount, date, method, reference, optional order link, notes; client/order balance preview
-- Client payments are **pooled at client level** and allocated across orders by ledger rules
+- Client payments: client, **payment purpose** (Order bill / Delivery bill), amount, date, method, reference, optional order link, notes; client/order balance preview
+- New client payments **must** choose purpose — money reduces only that due type (product or shipping)
+- Purpose is stored on each payment and shown in lists, client ledger, and reports
+- Within a purpose pool, allocation is oldest-order-first across the client’s open orders
+- Legacy payments without purpose stay `auto` (waterfall: remaining order bill, then delivery)
+- Optional order reference is for notes only (does not pin allocation to that order)
 - Supplier payments: company, amount, date, method, reference, notes; company bill/paid/due preview
 - Supplier payments update the company ledger (receive shipping + manual bills − payments)
 - List/search/date filters on both tabs; clients are scoped to their own (incoming) payments
@@ -329,7 +333,7 @@ Schema upgrades are versioned in `CRM_Activator::maybe_upgrade()` so production 
 - CRUD: name, phone, email, address, notes, status
 - Link / unlink WordPress portal user (`crm_client` role users)
 - List shows bill / paid / due summary columns
-- **Client ledger** modal: totals, order-wise allocated share, payment history
+- **Client ledger** modal: totals, order/delivery breakdown, order-wise allocated share, payment history with purpose
 - “Record payment” action shown only when user can create payments
 - Auto-provision client row when CRM Client users are synced
 
@@ -377,14 +381,18 @@ Schema upgrades are versioned in `CRM_Activator::maybe_upgrade()` so production 
 **Requires:** `crm_view_reports`
 
 **Report types:**
-1. **Client ledger** — receivables over a date range (opening balance when from-date set)
-2. **Supplier ledger** — payables for a company over a date range
-3. **Stock report** — inventory snapshot / movements context as implemented
+1. **Full client report** — account summary, order/delivery bill–paid–due, payments with purpose, plus chronological ledger; primary report for staff and client portal (**My report**)
+2. **Client ledger** — receivables over a date range (opening balance when from-date set); payments labeled by purpose
+3. **Client billing statement** — order-wise billing only (subset of the full report)
+4. **Supplier ledger** — payables for a company over a date range (staff only)
+5. **Stock report** — inventory snapshot (staff only)
 
 **Outputs:**
 - On-screen report view
-- Browser Print (PDF via print dialog)
+- **Download PDF** (browser Print → Save as PDF; branded header)
 - CSV export
+
+**Client portal:** Clients see only their own full account report (`crm_view_reports` + reports module). Supplier/stock endpoints are blocked server-side.
 
 ---
 
@@ -456,15 +464,16 @@ Accessible to users with CRM settings capability (and WP administrators).
 | Item | Behavior |
 |------|----------|
 | Role | `crm_client` |
-| Default modules | Orders, Delivery, Payments |
+| Default modules | Orders, Delivery, Payments, My report |
 | Data scope | Linked `clients` row via `wp_user_id` / user meta |
 | Order visibility | Setting `client_orders_scope`: `own` (default) or `all` |
 | Create orders | Yes (for linked client) |
 | Edit / cancel | Only own created orders while awaiting acceptance |
 | Payments | View history; cannot record/edit/delete |
+| Reports | Own full account report only; Download PDF; no supplier/stock |
 | Extra modules | Only if Team permissions explicitly grant the view cap |
 
-Client-facing copy is simplified (e.g. “on the way”, “My payments”).
+Client-facing copy is simplified (e.g. “on the way”, “My payments”, “My report”).
 
 ### 6.2 China office portal
 
@@ -555,17 +564,19 @@ Even without “edit any orders”:
 |-----------|--------|
 | Order bill | Accepted quantity × unit price (China-approved) |
 | Delivery / shipping bill | Delivery documents (weight × rate allocation) |
-| Payments | Recorded against client (optional order reference) |
+| Payments | Recorded against client with purpose (order bill or delivery bill); optional order reference |
 
-**Allocation rule (FIFO):**  
-Client payments are applied to orders oldest-first; within an order, product bill is covered before delivery bill.
+**Allocation rule (purpose + FIFO):**  
+- **Order bill** payments reduce product dues only (oldest open orders first)  
+- **Delivery bill** payments reduce shipping dues only (oldest open orders first)  
+- Legacy **auto** payments use waterfall: remaining order bill, then delivery, per order (oldest first)  
 
 Ledgers expose:
 
-- Total bill, total paid, total due  
+- Total bill, total paid (applied), total due  
 - Order bill / order paid / order due  
 - Delivery bill / delivery paid / delivery due  
-
+- Per-order payment status: unpaid / partial / paid
 ### 8.2 Supplier side
 
 | Item | Source |
@@ -762,7 +773,7 @@ Present in the system:
 | Blocks workflow | Status that prevents export/delivery/billing progress until cleared |
 | Dual timezone | Show both BD and China local times for the same event |
 | Team overrides | Per-user capability exceptions on top of role defaults |
-| FIFO allocation | Payments applied to oldest orders first |
+| FIFO allocation | Purpose-tagged payments applied to oldest matching dues first |
 
 ---
 

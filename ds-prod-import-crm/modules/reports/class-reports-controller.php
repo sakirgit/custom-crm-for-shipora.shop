@@ -21,6 +21,8 @@ class Reports_Controller extends CRM_Controller_Base {
 	public static function init() {
 		add_action( 'wp_ajax_crm_reports_filters', array( __CLASS__, 'filters' ) );
 		add_action( 'wp_ajax_crm_reports_client_ledger', array( __CLASS__, 'client_ledger' ) );
+		add_action( 'wp_ajax_crm_reports_client_statement', array( __CLASS__, 'client_statement' ) );
+		add_action( 'wp_ajax_crm_reports_client_full', array( __CLASS__, 'client_full' ) );
 		add_action( 'wp_ajax_crm_reports_supplier_ledger', array( __CLASS__, 'supplier_ledger' ) );
 		add_action( 'wp_ajax_crm_reports_stock', array( __CLASS__, 'stock' ) );
 	}
@@ -35,6 +37,46 @@ class Reports_Controller extends CRM_Controller_Base {
 	}
 
 	/**
+	 * Staff-only report endpoints refuse client portal users.
+	 *
+	 * @return void
+	 */
+	private static function refuse_portal_staff_reports() {
+		if ( CRM_Client_Portal::is_client_user() ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'This report is not available in the client portal.', 'ds-prod-import-crm' ),
+				),
+				403
+			);
+		}
+	}
+
+	/**
+	 * Resolve client ID for report endpoints (portal users are locked to their linked client).
+	 *
+	 * @param int $requested_id Client ID from request.
+	 * @return int
+	 */
+	private static function resolve_report_client_id( $requested_id ) {
+		$requested_id = absint( $requested_id );
+
+		if ( CRM_Client_Portal::is_client_user() ) {
+			$linked = CRM_Client_Portal::get_linked_client_id();
+			if ( $linked < 1 ) {
+				wp_send_json_error(
+					array(
+						'message' => __( 'Your account is not linked to a client profile.', 'ds-prod-import-crm' ),
+					)
+				);
+			}
+			return $linked;
+		}
+
+		return $requested_id;
+	}
+
+	/**
 	 * Dropdown options for report filters.
 	 *
 	 * @return void
@@ -43,6 +85,32 @@ class Reports_Controller extends CRM_Controller_Base {
 		self::verify_reports();
 
 		global $wpdb;
+
+		if ( CRM_Client_Portal::is_client_user() ) {
+			$linked = CRM_Client_Portal::get_linked_client_id();
+			$clients = array();
+			if ( $linked > 0 ) {
+				$row = $wpdb->get_row(
+					$wpdb->prepare(
+						'SELECT id, name FROM ' . crm_table( 'clients' ) . ' WHERE id = %d',
+						$linked
+					),
+					ARRAY_A
+				);
+				if ( $row ) {
+					$clients[] = $row;
+				}
+			}
+
+			wp_send_json_success(
+				array(
+					'is_portal'        => true,
+					'linked_client_id' => $linked,
+					'clients'          => $clients,
+					'companies'        => array(),
+				)
+			);
+		}
 
 		$clients = $wpdb->get_results(
 			'SELECT id, name FROM ' . crm_table( 'clients' ) . " WHERE status = 'active' ORDER BY name ASC",
@@ -56,8 +124,10 @@ class Reports_Controller extends CRM_Controller_Base {
 
 		wp_send_json_success(
 			array(
-				'clients'   => $clients ? $clients : array(),
-				'companies' => $companies ? $companies : array(),
+				'is_portal'        => false,
+				'linked_client_id' => 0,
+				'clients'          => $clients ? $clients : array(),
+				'companies'        => $companies ? $companies : array(),
 			)
 		);
 	}
@@ -72,7 +142,7 @@ class Reports_Controller extends CRM_Controller_Base {
 
 		global $wpdb;
 
-		$client_id = isset( $_POST['client_id'] ) ? absint( $_POST['client_id'] ) : 0;
+		$client_id = self::resolve_report_client_id( isset( $_POST['client_id'] ) ? absint( $_POST['client_id'] ) : 0 );
 		$dates     = self::date_range_from_request();
 
 		if ( ! $client_id ) {
@@ -80,7 +150,7 @@ class Reports_Controller extends CRM_Controller_Base {
 		}
 
 		$client = $wpdb->get_row(
-			$wpdb->prepare( 'SELECT id, name, phone, email FROM ' . crm_table( 'clients' ) . ' WHERE id = %d', $client_id ),
+			$wpdb->prepare( 'SELECT id, name, phone, email, address FROM ' . crm_table( 'clients' ) . ' WHERE id = %d', $client_id ),
 			ARRAY_A
 		);
 
@@ -132,7 +202,7 @@ class Reports_Controller extends CRM_Controller_Base {
 
 		$payments = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT payment_date, payment_number, amount, payment_method, reference FROM ' . $payments_table . '
+				'SELECT payment_date, payment_number, amount, payment_method, reference, payment_purpose FROM ' . $payments_table . '
 				WHERE ' . implode( ' AND ', $pay_where ) . '
 				ORDER BY payment_date ASC, id ASC',
 				$pay_params
@@ -157,14 +227,20 @@ class Reports_Controller extends CRM_Controller_Base {
 			);
 		}
 
-		foreach ( $payments ? $payments : array() as $payment ) {
+		foreach ( (array) $payments as $payment ) {
+			$purpose = CRM_Ledger::normalize_payment_purpose( $payment['payment_purpose'] ?? 'auto' );
 			$entries[] = array(
 				'date'      => $payment['payment_date'],
 				'type'      => 'payment',
-				'label'     => __( 'Payment received', 'ds-prod-import-crm' ),
+				'label'     => sprintf(
+					/* translators: %s: payment purpose label */
+					__( 'Payment · %s', 'ds-prod-import-crm' ),
+					CRM_Ledger::payment_purpose_label( $purpose )
+				),
 				'reference' => $payment['payment_number'] ?: '—',
 				'debit'     => 0,
 				'credit'    => round( (float) $payment['amount'], 2 ),
+				'purpose'   => $purpose,
 			);
 		}
 
@@ -208,6 +284,405 @@ class Reports_Controller extends CRM_Controller_Base {
 	}
 
 	/**
+	 * Detailed client billing statement (order-wise bills + purpose-tagged payments).
+	 *
+	 * @return void
+	 */
+	public static function client_statement() {
+		self::verify_reports();
+
+		global $wpdb;
+
+		$client_id = self::resolve_report_client_id( isset( $_POST['client_id'] ) ? absint( $_POST['client_id'] ) : 0 );
+		if ( ! $client_id ) {
+			wp_send_json_error( array( 'message' => __( 'Select a client.', 'ds-prod-import-crm' ) ) );
+		}
+
+		$client = $wpdb->get_row(
+			$wpdb->prepare( 'SELECT id, name, phone, email, address FROM ' . crm_table( 'clients' ) . ' WHERE id = %d', $client_id ),
+			ARRAY_A
+		);
+		if ( ! $client ) {
+			wp_send_json_error( array( 'message' => __( 'Client not found.', 'ds-prod-import-crm' ) ) );
+		}
+
+		$dates = self::date_range_from_request();
+		$allocations = CRM_Ledger::allocate_client_payments( $client_id );
+
+		$orders = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, order_number, order_date, status FROM " . crm_table( 'orders' ) . "
+				WHERE client_id = %d AND status != 'cancelled'
+				ORDER BY order_date ASC, id ASC",
+				$client_id
+			),
+			ARRAY_A
+		);
+
+		$order_rows = array();
+		foreach ( (array) $orders as $order ) {
+			$order_id = (int) $order['id'];
+			$summary  = isset( $allocations[ $order_id ] )
+				? $allocations[ $order_id ]
+				: CRM_Ledger::get_order_summary( $order_id );
+
+			if ( $dates['date_from'] && $order['order_date'] && $order['order_date'] < $dates['date_from'] ) {
+				continue;
+			}
+			if ( $dates['date_to'] && $order['order_date'] && $order['order_date'] > $dates['date_to'] ) {
+				continue;
+			}
+
+			$status = $summary['payment_status'] ?? 'unpaid';
+			$order_rows[] = array(
+				'order_id'       => $order_id,
+				'order_number'   => $order['order_number'],
+				'order_date'     => $order['order_date'],
+				'order_status'   => $order['status'],
+				'order_bill'     => (float) ( $summary['order_bill'] ?? 0 ),
+				'order_paid'     => (float) ( $summary['order_paid'] ?? 0 ),
+				'order_due'      => (float) ( $summary['order_due'] ?? 0 ),
+				'delivery_bill'  => (float) ( $summary['delivery_bill'] ?? 0 ),
+				'delivery_paid'  => (float) ( $summary['delivery_paid'] ?? 0 ),
+				'delivery_due'   => (float) ( $summary['delivery_due'] ?? 0 ),
+				'total_bill'     => (float) ( $summary['total_bill'] ?? 0 ),
+				'total_paid'     => (float) ( $summary['total_paid'] ?? 0 ),
+				'total_due'      => (float) ( $summary['total_due'] ?? 0 ),
+				'payment_status' => $status,
+				'payment_status_label' => self::payment_status_label( $status ),
+			);
+		}
+
+		$pay_where  = array( 'client_id = %d' );
+		$pay_params = array( $client_id );
+		if ( $dates['date_from'] ) {
+			$pay_where[]  = 'payment_date >= %s';
+			$pay_params[] = $dates['date_from'];
+		}
+		if ( $dates['date_to'] ) {
+			$pay_where[]  = 'payment_date <= %s';
+			$pay_params[] = $dates['date_to'];
+		}
+
+		$payments = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT payment_date, payment_number, amount, payment_method, reference, payment_purpose, order_id
+				FROM ' . crm_table( 'payments' ) . '
+				WHERE ' . implode( ' AND ', $pay_where ) . '
+				ORDER BY payment_date ASC, id ASC',
+				$pay_params
+			),
+			ARRAY_A
+		);
+
+		$payment_rows = array();
+		foreach ( (array) $payments as $payment ) {
+			$purpose = CRM_Ledger::normalize_payment_purpose( $payment['payment_purpose'] ?? 'auto' );
+			$payment_rows[] = array(
+				'payment_date'           => $payment['payment_date'],
+				'payment_number'         => $payment['payment_number'],
+				'amount'                 => round( (float) $payment['amount'], 2 ),
+				'payment_method'         => $payment['payment_method'],
+				'reference'              => $payment['reference'],
+				'payment_purpose'        => $purpose,
+				'payment_purpose_label'  => CRM_Ledger::payment_purpose_label( $purpose ),
+				'order_id'               => (int) ( $payment['order_id'] ?? 0 ),
+			);
+		}
+
+		wp_send_json_success(
+			array(
+				'report_type' => 'client_statement',
+				'entity'      => $client,
+				'date_from'   => $dates['date_from'],
+				'date_to'     => $dates['date_to'],
+				'summary'     => CRM_Ledger::get_client_summary( $client_id ),
+				'orders'      => $order_rows,
+				'payments'    => $payment_rows,
+			)
+		);
+	}
+
+	/**
+	 * Full client report: account summary + order billing + payments + chronological ledger.
+	 * Used by admin and client portal; PDF via browser Print / Save as PDF.
+	 *
+	 * @return void
+	 */
+	public static function client_full() {
+		self::verify_reports();
+
+		global $wpdb;
+
+		$client_id = self::resolve_report_client_id( isset( $_POST['client_id'] ) ? absint( $_POST['client_id'] ) : 0 );
+		if ( ! $client_id ) {
+			wp_send_json_error( array( 'message' => __( 'Select a client.', 'ds-prod-import-crm' ) ) );
+		}
+
+		$client = $wpdb->get_row(
+			$wpdb->prepare( 'SELECT id, name, phone, email, address FROM ' . crm_table( 'clients' ) . ' WHERE id = %d', $client_id ),
+			ARRAY_A
+		);
+		if ( ! $client ) {
+			wp_send_json_error( array( 'message' => __( 'Client not found.', 'ds-prod-import-crm' ) ) );
+		}
+
+		$dates       = self::date_range_from_request();
+		$summary     = CRM_Ledger::get_client_summary( $client_id );
+		$allocations = CRM_Ledger::allocate_client_payments( $client_id );
+
+		$orders = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, order_number, order_date, status FROM " . crm_table( 'orders' ) . "
+				WHERE client_id = %d AND status != 'cancelled'
+				ORDER BY order_date ASC, id ASC",
+				$client_id
+			),
+			ARRAY_A
+		);
+
+		$order_rows = array();
+		foreach ( (array) $orders as $order ) {
+			$order_id = (int) $order['id'];
+			$row_sum  = isset( $allocations[ $order_id ] )
+				? $allocations[ $order_id ]
+				: CRM_Ledger::get_order_summary( $order_id );
+
+			if ( $dates['date_from'] && $order['order_date'] && $order['order_date'] < $dates['date_from'] ) {
+				continue;
+			}
+			if ( $dates['date_to'] && $order['order_date'] && $order['order_date'] > $dates['date_to'] ) {
+				continue;
+			}
+
+			$status = $row_sum['payment_status'] ?? 'unpaid';
+			$order_rows[] = array(
+				'order_id'             => $order_id,
+				'order_number'         => $order['order_number'],
+				'order_date'           => $order['order_date'],
+				'order_status'         => $order['status'],
+				'order_bill'           => (float) ( $row_sum['order_bill'] ?? 0 ),
+				'order_paid'           => (float) ( $row_sum['order_paid'] ?? 0 ),
+				'order_due'            => (float) ( $row_sum['order_due'] ?? 0 ),
+				'delivery_bill'        => (float) ( $row_sum['delivery_bill'] ?? 0 ),
+				'delivery_paid'        => (float) ( $row_sum['delivery_paid'] ?? 0 ),
+				'delivery_due'         => (float) ( $row_sum['delivery_due'] ?? 0 ),
+				'total_bill'           => (float) ( $row_sum['total_bill'] ?? 0 ),
+				'total_paid'           => (float) ( $row_sum['total_paid'] ?? 0 ),
+				'total_due'            => (float) ( $row_sum['total_due'] ?? 0 ),
+				'payment_status'       => $status,
+				'payment_status_label' => self::payment_status_label( $status ),
+			);
+		}
+
+		$pay_where  = array( 'client_id = %d' );
+		$pay_params = array( $client_id );
+		if ( $dates['date_from'] ) {
+			$pay_where[]  = 'payment_date >= %s';
+			$pay_params[] = $dates['date_from'];
+		}
+		if ( $dates['date_to'] ) {
+			$pay_where[]  = 'payment_date <= %s';
+			$pay_params[] = $dates['date_to'];
+		}
+
+		$payments = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT payment_date, payment_number, amount, payment_method, reference, payment_purpose, order_id
+				FROM ' . crm_table( 'payments' ) . '
+				WHERE ' . implode( ' AND ', $pay_where ) . '
+				ORDER BY payment_date ASC, id ASC',
+				$pay_params
+			),
+			ARRAY_A
+		);
+
+		$payment_rows = array();
+		foreach ( (array) $payments as $payment ) {
+			$purpose = CRM_Ledger::normalize_payment_purpose( $payment['payment_purpose'] ?? 'auto' );
+			$payment_rows[] = array(
+				'payment_date'          => $payment['payment_date'],
+				'payment_number'        => $payment['payment_number'],
+				'amount'                => round( (float) $payment['amount'], 2 ),
+				'payment_method'        => $payment['payment_method'],
+				'reference'             => $payment['reference'],
+				'payment_purpose'       => $purpose,
+				'payment_purpose_label' => CRM_Ledger::payment_purpose_label( $purpose ),
+				'order_id'              => (int) ( $payment['order_id'] ?? 0 ),
+			);
+		}
+
+		$ledger_payload = self::build_client_ledger_entries( $client_id, $dates );
+		$open_orders    = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM " . crm_table( 'orders' ) . " WHERE client_id = %d AND status != 'cancelled'",
+				$client_id
+			)
+		);
+
+		wp_send_json_success(
+			array(
+				'report_type'  => 'client_full',
+				'entity'       => $client,
+				'date_from'    => $dates['date_from'],
+				'date_to'      => $dates['date_to'],
+				'summary'      => $summary,
+				'open_orders'  => $open_orders,
+				'orders'       => $order_rows,
+				'payments'     => $payment_rows,
+				'opening'      => $ledger_payload['opening'],
+				'period_debit' => $ledger_payload['period_debit'],
+				'period_credit'=> $ledger_payload['period_credit'],
+				'closing'      => $ledger_payload['closing'],
+				'entries'      => $ledger_payload['entries'],
+			)
+		);
+	}
+
+	/**
+	 * Build chronological client ledger entries for a date range.
+	 *
+	 * @param int                  $client_id Client ID.
+	 * @param array<string,string> $dates     date_from / date_to.
+	 * @return array{opening:float,period_debit:float,period_credit:float,closing:float,entries:array<int,array<string,mixed>>}
+	 */
+	private static function build_client_ledger_entries( $client_id, $dates ) {
+		global $wpdb;
+
+		$bills_table    = crm_table( 'client_bills' );
+		$payments_table = crm_table( 'payments' );
+		$orders_table   = crm_table( 'orders' );
+
+		$opening = self::client_opening_balance( $client_id, $dates['date_from'] );
+
+		$bill_where  = array( 'b.client_id = %d' );
+		$bill_params = array( $client_id );
+		if ( $dates['date_from'] ) {
+			$bill_where[]  = 'b.bill_date >= %s';
+			$bill_params[] = $dates['date_from'];
+		}
+		if ( $dates['date_to'] ) {
+			$bill_where[]  = 'b.bill_date <= %s';
+			$bill_params[] = $dates['date_to'];
+		}
+
+		$bills = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT b.bill_date, b.bill_type, b.amount, o.order_number
+				FROM {$bills_table} b
+				LEFT JOIN {$orders_table} o ON o.id = b.order_id
+				WHERE " . implode( ' AND ', $bill_where ) . '
+				ORDER BY b.bill_date ASC, b.id ASC',
+				$bill_params
+			),
+			ARRAY_A
+		);
+
+		$pay_where  = array( 'client_id = %d' );
+		$pay_params = array( $client_id );
+		if ( $dates['date_from'] ) {
+			$pay_where[]  = 'payment_date >= %s';
+			$pay_params[] = $dates['date_from'];
+		}
+		if ( $dates['date_to'] ) {
+			$pay_where[]  = 'payment_date <= %s';
+			$pay_params[] = $dates['date_to'];
+		}
+
+		$payments = $wpdb->get_results(
+			$wpdb->prepare(
+				'SELECT payment_date, payment_number, amount, payment_method, reference, payment_purpose FROM ' . $payments_table . '
+				WHERE ' . implode( ' AND ', $pay_where ) . '
+				ORDER BY payment_date ASC, id ASC',
+				$pay_params
+			),
+			ARRAY_A
+		);
+
+		$entries = array();
+		foreach ( (array) $bills as $bill ) {
+			$label = 'shipping_bill' === $bill['bill_type']
+				? __( 'Shipping bill', 'ds-prod-import-crm' )
+				: __( 'Order bill', 'ds-prod-import-crm' );
+			$entries[] = array(
+				'date'      => $bill['bill_date'],
+				'type'      => 'bill',
+				'label'     => $label,
+				'reference' => $bill['order_number'] ?: '—',
+				'debit'     => round( (float) $bill['amount'], 2 ),
+				'credit'    => 0,
+			);
+		}
+		foreach ( (array) $payments as $payment ) {
+			$purpose = CRM_Ledger::normalize_payment_purpose( $payment['payment_purpose'] ?? 'auto' );
+			$entries[] = array(
+				'date'      => $payment['payment_date'],
+				'type'      => 'payment',
+				'label'     => sprintf(
+					/* translators: %s: payment purpose label */
+					__( 'Payment · %s', 'ds-prod-import-crm' ),
+					CRM_Ledger::payment_purpose_label( $purpose )
+				),
+				'reference' => $payment['payment_number'] ?: '—',
+				'debit'     => 0,
+				'credit'    => round( (float) $payment['amount'], 2 ),
+				'purpose'   => $purpose,
+			);
+		}
+
+		usort(
+			$entries,
+			static function ( $a, $b ) {
+				$cmp = strcmp( (string) $a['date'], (string) $b['date'] );
+				if ( 0 !== $cmp ) {
+					return $cmp;
+				}
+				if ( $a['type'] === $b['type'] ) {
+					return 0;
+				}
+				return 'bill' === $a['type'] ? -1 : 1;
+			}
+		);
+
+		$running        = $opening;
+		$period_debit   = 0.0;
+		$period_credit  = 0.0;
+		foreach ( $entries as $index => $entry ) {
+			$period_debit  += (float) $entry['debit'];
+			$period_credit += (float) $entry['credit'];
+			$running        = round( $running + (float) $entry['debit'] - (float) $entry['credit'], 2 );
+			$entries[ $index ]['balance'] = $running;
+		}
+
+		return array(
+			'opening'       => round( $opening, 2 ),
+			'period_debit'  => round( $period_debit, 2 ),
+			'period_credit' => round( $period_credit, 2 ),
+			'closing'       => round( $running, 2 ),
+			'entries'       => $entries,
+		);
+	}
+
+	/**
+	 * Human label for order payment status.
+	 *
+	 * @param string $status Status slug.
+	 * @return string
+	 */
+	private static function payment_status_label( $status ) {
+		switch ( sanitize_key( (string) $status ) ) {
+			case 'paid':
+				return __( 'Paid', 'ds-prod-import-crm' );
+			case 'partial':
+				return __( 'Partial', 'ds-prod-import-crm' );
+			case 'none':
+				return __( 'No bill', 'ds-prod-import-crm' );
+			default:
+				return __( 'Unpaid', 'ds-prod-import-crm' );
+		}
+	}
+
+	/**
 	 * Opening balance for client before date_from.
 	 *
 	 * @param int    $client_id Client ID.
@@ -247,6 +722,7 @@ class Reports_Controller extends CRM_Controller_Base {
 	 */
 	public static function supplier_ledger() {
 		self::verify_reports();
+		self::refuse_portal_staff_reports();
 
 		global $wpdb;
 
@@ -466,6 +942,7 @@ class Reports_Controller extends CRM_Controller_Base {
 	 */
 	public static function stock() {
 		self::verify_reports();
+		self::refuse_portal_staff_reports();
 
 		global $wpdb;
 

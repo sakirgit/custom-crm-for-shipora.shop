@@ -23,7 +23,7 @@ $can_record_sup  = $show_suppliers && CRM_Capability_Registry::user_can_manage_b
 $requested_tab   = isset( $_GET['payments_tab'] ) ? sanitize_key( wp_unslash( $_GET['payments_tab'] ) ) : 'clients';
 $active_tab      = ( $show_suppliers && 'suppliers' === $requested_tab ) ? 'suppliers' : 'clients';
 $preset_company  = isset( $_GET['company_id'] ) ? absint( $_GET['company_id'] ) : 0;
-$col_count       = $is_client ? 6 : 8;
+$col_count       = $is_client ? 7 : 9;
 $supplier_cols   = 8;
 ?>
 <div class="ds-crm-module-page" data-crm-module="payments"
@@ -63,14 +63,14 @@ $supplier_cols   = 8;
 	<div class="ds-crm-payments-panel ds-crm-payments-clients" data-panel="clients"<?php echo 'suppliers' === $active_tab ? ' hidden' : ''; ?>>
 		<?php if ( $is_client ) : ?>
 		<div class="ds-crm-notice ds-crm-notice-info">
-			<?php esc_html_e( 'Payments recorded against your account. Your balance is shared across all orders — oldest orders are covered first (product bill, then delivery).', 'ds-prod-import-crm' ); ?>
+			<?php esc_html_e( 'Payments recorded against your account. Each payment is tagged as Order bill or Delivery bill, then applied to your oldest open dues of that type.', 'ds-prod-import-crm' ); ?>
 		</div>
 		<div class="ds-crm-client-payment-balance" hidden>
 			<div class="ds-crm-order-stats ds-crm-order-stats--compact ds-crm-client-payment-balance-stats"></div>
 		</div>
 		<?php else : ?>
 		<div class="ds-crm-notice ds-crm-notice-info">
-			<?php esc_html_e( 'Money received from clients. Payments are pooled per client — you do not need to link each payment to a specific order. Optional order reference is for your notes only. Balance is allocated oldest-order-first (product bill, then delivery bill).', 'ds-prod-import-crm' ); ?>
+			<?php esc_html_e( 'When recording a payment, choose Order bill (product) or Delivery bill (shipping). That purpose is stored on the payment and used for dues, ledgers, and the client billing statement. Optional order reference is for notes only.', 'ds-prod-import-crm' ); ?>
 		</div>
 		<?php endif; ?>
 
@@ -101,6 +101,7 @@ $supplier_cols   = 8;
 						<th><?php esc_html_e( 'Client', 'ds-prod-import-crm' ); ?></th>
 						<?php endif; ?>
 						<th><?php esc_html_e( 'Ref. order', 'ds-prod-import-crm' ); ?></th>
+						<th><?php esc_html_e( 'Purpose', 'ds-prod-import-crm' ); ?></th>
 						<th><?php esc_html_e( 'Date & time', 'ds-prod-import-crm' ); ?></th>
 						<th class="ds-crm-amount-col"><?php esc_html_e( 'Amount', 'ds-prod-import-crm' ); ?></th>
 						<th><?php esc_html_e( 'Method', 'ds-prod-import-crm' ); ?></th>
@@ -201,7 +202,7 @@ $supplier_cols   = 8;
 						<select id="payment-order" name="order_id">
 							<option value=""><?php esc_html_e( 'General client payment', 'ds-prod-import-crm' ); ?></option>
 						</select>
-						<span class="description"><?php esc_html_e( 'For your records only — balance is shared across all client orders.', 'ds-prod-import-crm' ); ?></span>
+						<span class="description"><?php esc_html_e( 'For your records only — dues are reduced by payment purpose across this client’s open orders (oldest first).', 'ds-prod-import-crm' ); ?></span>
 					</p>
 				</div>
 				<div class="ds-crm-payment-client-preview" hidden>
@@ -210,6 +211,20 @@ $supplier_cols   = 8;
 				<div class="ds-crm-payment-order-preview" hidden>
 					<div class="ds-crm-payment-order-preview-inner"></div>
 				</div>
+				<p class="ds-crm-field-full ds-crm-payment-purpose-field">
+					<label><?php esc_html_e( 'Payment applies to', 'ds-prod-import-crm' ); ?> <span class="required">*</span></label>
+					<span class="ds-crm-payment-purpose-options">
+						<label class="ds-crm-payment-purpose-option">
+							<input type="radio" name="payment_purpose" value="order_bill" required />
+							<span><?php esc_html_e( 'Order bill (product)', 'ds-prod-import-crm' ); ?></span>
+						</label>
+						<label class="ds-crm-payment-purpose-option">
+							<input type="radio" name="payment_purpose" value="delivery_bill" required />
+							<span><?php esc_html_e( 'Delivery bill (shipping)', 'ds-prod-import-crm' ); ?></span>
+						</label>
+					</span>
+					<span class="description"><?php esc_html_e( 'Choose which due this money reduces. It will show on the client ledger and billing statement.', 'ds-prod-import-crm' ); ?></span>
+				</p>
 				<div class="ds-crm-form-grid ds-crm-payment-form-grid">
 					<p>
 						<label for="payment-date"><?php esc_html_e( 'Payment date', 'ds-prod-import-crm' ); ?> <span class="required">*</span></label>

@@ -87,6 +87,7 @@ class CRM_Roles {
 					'crm_orders_create',
 					'crm_delivery_view',
 					'crm_payments_view',
+					'crm_view_reports',
 				),
 			),
 			'crm_china_office' => array(

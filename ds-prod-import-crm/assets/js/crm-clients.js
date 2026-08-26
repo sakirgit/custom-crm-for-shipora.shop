@@ -295,6 +295,7 @@
 						<td>${escapeHtml(p.payment_number || '—')}</td>
 						<td>${formatDate(p.payment_date)}</td>
 						<td>${formatAmount(p.amount)}</td>
+						<td>${escapeHtml(p.payment_purpose_label || p.payment_purpose || '—')}</td>
 						<td>${escapeHtml(p.order_number || '—')}</td>
 						<td>${escapeHtml(p.payment_method || '—')}</td>
 						<td>${escapeHtml(p.reference || '—')}</td>
@@ -332,7 +333,7 @@
 						</div>
 					</div>
 					<section class="ds-crm-ledger-section">
-						<h3>Orders <span class="description">(allocated share of client payments, oldest first)</span></h3>
+						<h3>Orders <span class="description">(purpose-aware allocation, oldest orders first)</span></h3>
 						${renderLedgerTable(
 							['Order #', 'Date', 'Status', 'Bill', 'Paid', 'Due'],
 							orderRows,
@@ -342,7 +343,7 @@
 					<section class="ds-crm-ledger-section">
 						<h3>Payments received</h3>
 						${renderLedgerTable(
-							['Payment #', 'Date', 'Amount', 'Ref. order', 'Method', 'Reference'],
+							['Payment #', 'Date', 'Amount', 'Purpose', 'Ref. order', 'Method', 'Reference'],
 							paymentRows,
 							'No payments recorded yet.'
 						)}

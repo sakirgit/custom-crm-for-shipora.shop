@@ -196,7 +196,7 @@ class CRM_Client_Portal {
 	 * @return array<int, string>
 	 */
 	public static function allowed_modules() {
-		return array( 'orders', 'delivery', 'payments' );
+		return array( 'orders', 'delivery', 'payments', 'reports' );
 	}
 
 	/**
