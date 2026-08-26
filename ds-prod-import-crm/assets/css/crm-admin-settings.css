@@ -1,0 +1,544 @@
+/**
+ * WordPress admin — CRM Settings screen only.
+ */
+
+.ds-crm-admin-settings .ds-crm-module-page {
+	max-width: 920px;
+	margin-top: 8px;
+}
+
+.ds-crm-admin-settings .ds-crm-page-header {
+	display: none;
+}
+
+.ds-crm-admin-settings .ds-crm-settings-form {
+	margin: 0;
+}
+
+.ds-crm-admin-settings .ds-crm-form-error {
+	margin: 0 0 16px;
+	padding: 10px 14px;
+	background: #fcf0f1;
+	border: 1px solid #d63638;
+	border-left-width: 4px;
+	border-radius: 0;
+	color: #3c434a;
+}
+
+.ds-crm-admin-settings .ds-crm-settings-notices {
+	margin-bottom: 16px;
+}
+
+.ds-crm-admin-settings .ds-crm-settings-card {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+	border-radius: 4px;
+	padding: 0;
+	margin-bottom: 20px;
+	overflow: hidden;
+}
+
+.ds-crm-admin-settings .ds-crm-settings-card-header {
+	padding: 16px 20px;
+	border-bottom: 1px solid #dcdcde;
+	background: #f6f7f7;
+}
+
+.ds-crm-admin-settings .ds-crm-settings-card-header h2 {
+	margin: 0;
+	padding: 0;
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1.4;
+	color: #1d2327;
+}
+
+.ds-crm-admin-settings .ds-crm-settings-card-header .description {
+	margin: 6px 0 0;
+	color: #646970;
+}
+
+.ds-crm-admin-settings .ds-crm-settings-card-body {
+	padding: 16px 20px 20px;
+}
+
+.ds-crm-admin-settings .ds-crm-field-table {
+	display: grid;
+	gap: 0;
+}
+
+.ds-crm-admin-settings .ds-crm-field-row {
+	display: grid;
+	grid-template-columns: 200px 1fr;
+	gap: 12px 20px;
+	align-items: start;
+	padding: 14px 0;
+	border-bottom: 1px solid #f0f0f1;
+}
+
+.ds-crm-admin-settings .ds-crm-field-row:last-child {
+	border-bottom: none;
+	padding-bottom: 0;
+}
+
+.ds-crm-admin-settings .ds-crm-field-row > label,
+.ds-crm-admin-settings .ds-crm-field-row > .ds-crm-field-label {
+	font-weight: 600;
+	color: #1d2327;
+	padding-top: 6px;
+	margin: 0;
+}
+
+.ds-crm-admin-settings .ds-crm-field-row .description {
+	margin: 6px 0 0;
+	color: #646970;
+	font-size: 13px;
+}
+
+.ds-crm-admin-settings .ds-crm-field-control input[type="text"],
+.ds-crm-admin-settings .ds-crm-field-control input[type="number"],
+.ds-crm-admin-settings .ds-crm-field-control select {
+	width: 100%;
+	max-width: 400px;
+}
+
+.ds-crm-admin-settings .ds-crm-field-control input.regular-text {
+	max-width: 100%;
+}
+
+.ds-crm-admin-settings .ds-crm-field-row--full {
+	grid-template-columns: 1fr;
+}
+
+.ds-crm-admin-settings .ds-crm-media-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 20px;
+}
+
+.ds-crm-admin-settings .ds-crm-media-field {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.ds-crm-admin-settings .ds-crm-media-field-label {
+	font-weight: 600;
+	color: #1d2327;
+	margin: 0;
+}
+
+.ds-crm-admin-settings .ds-crm-media-preview-box {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 120px;
+	padding: 16px;
+	background: #f6f7f7;
+	border: 1px dashed #c3c4c7;
+	border-radius: 4px;
+}
+
+.ds-crm-admin-settings .ds-crm-media-preview-box.is-empty .ds-crm-media-preview-img {
+	display: none;
+}
+
+.ds-crm-admin-settings .ds-crm-media-preview-box:not(.is-empty) .ds-crm-media-placeholder {
+	display: none;
+}
+
+.ds-crm-admin-settings .ds-crm-media-placeholder {
+	margin: 0;
+	color: #646970;
+	font-size: 13px;
+	text-align: center;
+}
+
+.ds-crm-admin-settings .ds-crm-media-preview-img {
+	max-width: 100%;
+	max-height: 80px;
+	width: auto;
+	height: auto;
+	object-fit: contain;
+}
+
+.ds-crm-admin-settings .ds-crm-media-field[data-media-type="favicon"] .ds-crm-media-preview-img {
+	max-height: 48px;
+	max-width: 48px;
+}
+
+.ds-crm-admin-settings .ds-crm-media-preview-box--favicon {
+	min-height: 96px;
+}
+
+.ds-crm-admin-settings .ds-crm-media-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.ds-crm-admin-settings .ds-crm-shortcode-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.ds-crm-admin-settings .ds-crm-shortcode-display {
+	display: inline-block;
+	padding: 8px 12px;
+	background: #f6f7f7;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	font-size: 13px;
+	line-height: 1.4;
+}
+
+.ds-crm-admin-settings .ds-crm-frontend-link-wrap {
+	margin-top: 8px;
+}
+
+.ds-crm-admin-settings .ds-crm-frontend-link-wrap a {
+	word-break: break-all;
+}
+
+.ds-crm-admin-settings .ds-crm-notice-info {
+	padding: 10px 14px;
+	background: #f0f6fc;
+	border: 1px solid #c5d9ed;
+	border-left: 4px solid #2271b1;
+	border-radius: 0;
+	color: #1d2327;
+	margin-bottom: 12px;
+}
+
+.ds-crm-admin-settings .ds-crm-hint-ok {
+	color: #00a32a;
+	display: block;
+	margin-top: 6px;
+}
+
+.ds-crm-admin-settings .ds-crm-hint-warn {
+	color: #dba617;
+	display: block;
+	margin-top: 6px;
+}
+
+.ds-crm-admin-settings .ds-crm-settings-submit {
+	margin: 4px 0 24px;
+	padding-top: 4px;
+}
+
+.ds-crm-admin-settings .ds-crm-toast-container {
+	position: fixed;
+	right: 24px;
+	bottom: 24px;
+	z-index: 100100;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.ds-crm-admin-settings .ds-crm-toast {
+	padding: 10px 16px;
+	background: #1d2327;
+	color: #fff;
+	border-radius: 4px;
+	font-size: 13px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.ds-crm-admin-settings .ds-crm-toast-error {
+	background: #d63638;
+}
+
+.ds-crm-admin-settings .ds-crm-color-settings {
+	margin-top: 24px;
+	padding-top: 20px;
+	border-top: 1px solid #f0f0f1;
+}
+
+.ds-crm-admin-settings .ds-crm-color-settings-title {
+	margin: 0 0 6px;
+	font-size: 13px;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+.ds-crm-admin-settings .ds-crm-color-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 16px 24px;
+	margin-top: 14px;
+}
+
+.ds-crm-admin-settings .ds-crm-color-field label {
+	display: block;
+	font-weight: 600;
+	margin-bottom: 6px;
+	color: #1d2327;
+}
+
+.ds-crm-admin-settings .ds-crm-color-input-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.ds-crm-admin-settings .ds-crm-color-input-row input[type="color"] {
+	width: 48px;
+	height: 36px;
+	padding: 2px;
+	border: 1px solid #8c8f94;
+	border-radius: 4px;
+	cursor: pointer;
+	background: #fff;
+}
+
+.ds-crm-admin-settings .ds-crm-color-hex {
+	width: 100px;
+	font-family: Consolas, Monaco, monospace;
+	text-transform: lowercase;
+}
+
+.ds-crm-admin-settings .ds-crm-color-preview {
+	display: flex;
+	gap: 12px;
+	margin-top: 20px;
+	padding: 14px;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	border-radius: 6px;
+	max-width: 420px;
+}
+
+.ds-crm-admin-settings .ds-crm-color-preview-sidebar {
+	flex: 0 0 100px;
+	background: #1a1f2e;
+	border-radius: 6px;
+	padding: 10px 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.ds-crm-admin-settings .ds-crm-color-preview-logo {
+	display: block;
+	height: 28px;
+	background: rgba(255, 255, 255, 0.2);
+	border-radius: 4px;
+}
+
+.ds-crm-admin-settings .ds-crm-color-preview-nav {
+	display: block;
+	height: 10px;
+	background: rgba(255, 255, 255, 0.12);
+	border-radius: 3px;
+}
+
+.ds-crm-admin-settings .ds-crm-color-preview-nav.is-active {
+	background: #2563eb;
+}
+
+.ds-crm-admin-settings .ds-crm-color-preview-main {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.ds-crm-admin-settings .ds-crm-color-preview-tab {
+	display: inline-block;
+	width: 48px;
+	height: 18px;
+	border-radius: 999px;
+	border: 1px solid #dcdcde;
+	background: #fff;
+}
+
+.ds-crm-admin-settings .ds-crm-color-preview-tab.is-active {
+	background: #2563eb;
+	border-color: #2563eb;
+}
+
+.ds-crm-admin-settings .ds-crm-color-preview-kpi {
+	display: block;
+	height: 14px;
+	background: #fff;
+	border-left: 4px solid #2563eb;
+	border-radius: 2px;
+}
+
+.ds-crm-admin-settings .ds-crm-color-preview-kpi.is-secondary {
+	border-left-color: #7c3aed;
+}
+
+.ds-crm-admin-settings .ds-crm-data-reset-card {
+	border-color: #d63638;
+}
+
+.ds-crm-admin-settings .ds-crm-data-reset-card .ds-crm-settings-card-header {
+	background: #fcf0f1;
+	border-bottom-color: #f0b7b8;
+}
+
+.ds-crm-admin-settings .ds-crm-data-reset-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 20px 28px;
+	margin: 16px 0 20px;
+}
+
+.ds-crm-admin-settings .ds-crm-data-reset-column h3 {
+	margin: 0 0 10px;
+	font-size: 13px;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+.ds-crm-admin-settings .ds-crm-data-reset-counts,
+.ds-crm-admin-settings .ds-crm-data-reset-preserved {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ds-crm-admin-settings .ds-crm-data-reset-counts li,
+.ds-crm-admin-settings .ds-crm-data-reset-preserved li {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 8px 0;
+	border-bottom: 1px solid #f0f0f1;
+	font-size: 13px;
+}
+
+.ds-crm-admin-settings .ds-crm-data-reset-counts li:last-child,
+.ds-crm-admin-settings .ds-crm-data-reset-preserved li:last-child {
+	border-bottom: none;
+}
+
+.ds-crm-admin-settings .ds-crm-data-reset-counts strong {
+	font-variant-numeric: tabular-nums;
+	color: #1d2327;
+}
+
+.ds-crm-admin-settings .ds-crm-data-reset-total {
+	margin: 8px 0 0;
+	font-weight: 600;
+}
+
+.ds-crm-admin-settings .ds-crm-data-reset-form label {
+	display: block;
+	margin-bottom: 8px;
+	font-weight: 600;
+}
+
+.ds-crm-admin-settings .ds-crm-data-reset-confirm-input {
+	max-width: 220px;
+	font-family: Consolas, Monaco, monospace;
+	text-transform: uppercase;
+}
+
+.ds-crm-admin-settings .ds-crm-data-reset-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	margin: 14px 0 0;
+}
+
+.ds-crm-admin-settings .ds-crm-settings-tabs {
+	margin-top: 12px;
+}
+
+.ds-crm-admin-settings .ds-crm-settings-tabs + .notice {
+	margin-top: 16px;
+}
+
+.ds-crm-admin-settings .ds-crm-settings-card + .ds-crm-settings-card {
+	margin-top: 16px;
+}
+
+.ds-crm-admin-settings .ds-crm-data-reset-error,
+.ds-crm-admin-settings .ds-crm-data-reset-success {
+	margin-top: 12px;
+}
+
+.ds-crm-admin-settings .ds-crm-settings-steps {
+	margin: 0 0 12px 1.25em;
+	padding: 0;
+}
+
+.ds-crm-admin-settings .ds-crm-settings-steps li {
+	margin-bottom: 6px;
+}
+
+.ds-crm-admin-settings .ds-crm-pricing-mode-fieldset {
+	border: 0;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.ds-crm-admin-settings .ds-crm-radio-option {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin: 0;
+	max-width: 560px;
+	font-size: 13px;
+	line-height: 1.5;
+	color: #1d2327;
+}
+
+.ds-crm-admin-settings .ds-crm-radio-option input[type="radio"] {
+	margin: 2px 0 0;
+	flex-shrink: 0;
+}
+
+.ds-crm-admin-settings .ds-crm-portal-users-table {
+	width: 100%;
+	max-width: 100%;
+	border-collapse: collapse;
+	margin-top: 8px;
+}
+
+.ds-crm-admin-settings .ds-crm-portal-users-table th,
+.ds-crm-admin-settings .ds-crm-portal-users-table td {
+	padding: 10px 12px;
+	border-bottom: 1px solid #f0f0f1;
+	text-align: left;
+	font-size: 13px;
+	vertical-align: top;
+}
+
+.ds-crm-admin-settings .ds-crm-portal-users-table th {
+	font-weight: 600;
+	color: #1d2327;
+	background: #f6f7f7;
+}
+
+.ds-crm-admin-settings .ds-crm-portal-users-empty {
+	margin: 8px 0 0;
+	color: #646970;
+	font-size: 13px;
+}
+
+@media screen and (max-width: 782px) {
+	.ds-crm-admin-settings .ds-crm-field-row {
+		grid-template-columns: 1fr;
+	}
+
+	.ds-crm-admin-settings .ds-crm-media-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.ds-crm-admin-settings .ds-crm-data-reset-grid {
+		grid-template-columns: 1fr;
+	}
+}

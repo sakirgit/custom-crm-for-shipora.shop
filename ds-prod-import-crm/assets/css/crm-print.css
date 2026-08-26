@@ -1,0 +1,62 @@
+@media print {
+	.ds-crm-sidebar,
+	.ds-crm-topbar,
+	.ds-crm-page-header,
+	.ds-crm-notice,
+	.ds-crm-reports-tabs,
+	.ds-crm-reports-panels,
+	.ds-crm-reports-output-toolbar,
+	.no-print {
+		display: none !important;
+	}
+
+	.ds-crm-app,
+	.ds-crm-content,
+	.ds-crm-module,
+	.ds-crm-reports-output,
+	.ds-crm-reports-print-area {
+		display: block !important;
+		width: 100% !important;
+		max-width: 100% !important;
+		padding: 0 !important;
+		margin: 0 !important;
+		box-shadow: none !important;
+		border: none !important;
+		background: #fff !important;
+	}
+
+	.ds-crm-report-print-header {
+		display: flex !important;
+		align-items: center;
+		gap: 16px;
+		margin-bottom: 20px;
+		padding-bottom: 12px;
+		border-bottom: 2px solid #e5e7eb;
+	}
+
+	.ds-crm-report-print-logo {
+		max-height: 48px;
+		max-width: 160px;
+		object-fit: contain;
+	}
+
+	.ds-crm-report-print-company {
+		display: block;
+		font-size: 18px;
+	}
+
+	.ds-crm-report-print-meta {
+		display: block;
+		font-size: 12px;
+		color: #6b7280;
+		margin-top: 4px;
+	}
+
+	.ds-crm-table {
+		font-size: 11px;
+	}
+
+	.ds-crm-stat-card {
+		break-inside: avoid;
+	}
+}

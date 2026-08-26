@@ -1,0 +1,682 @@
+/**
+ * CRM on public WordPress pages (shortcode).
+ * Isolates layout from theme styles (Blocksy, Elementor, etc.).
+ */
+
+/* Widen theme content area on CRM pages */
+body.ds-crm-page-active .entry-content,
+body.ds-crm-page-active .page-content,
+body.ds-crm-page-active .site-main article,
+body.ds-crm-page-active .ct-container,
+body.ds-crm-page-active .ct-container-fluid,
+body.ds-crm-page-active [class*="page-content"] {
+	max-width: none;
+	width: 100%;
+}
+
+body.ds-crm-page-active .entry-content > .ds-crm-frontend-root,
+body.ds-crm-page-active .wp-block-post-content > .ds-crm-frontend-root {
+	width: 100%;
+}
+
+/* Optional: hide duplicate theme page title above the app */
+body.ds-crm-page-active .entry-header:not(.ds-crm-frontend-root .entry-header),
+body.ds-crm-page-active .page-title:not(.ds-crm-frontend-root *),
+body.ds-crm-page-active .ct-page-title:not(.ds-crm-frontend-root *) {
+	display: none;
+}
+
+.ds-crm-frontend-root {
+	--ds-crm-sidebar: #1a1f2e;
+	--ds-crm-bg: #f4f6fb;
+	--ds-crm-surface: #ffffff;
+	--ds-crm-border: #e5e7eb;
+	--ds-crm-text: #111827;
+	--ds-crm-accent: #2563eb;
+	--ds-crm-accent-hover: #1d4ed8;
+	--ds-crm-accent-soft: #93c5fd;
+	--ds-crm-accent-muted-bg: #eff6ff;
+	--ds-crm-accent-muted-border: #bfdbfe;
+	--ds-crm-accent-muted-text: #1e3a8a;
+	--ds-crm-accent-focus: rgba(37, 99, 235, 0.18);
+	--ds-crm-accent-shadow: rgba(37, 99, 235, 0.12);
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100% !important;
+	margin: 0 0 1.5rem;
+	padding: 0;
+	color: var(--ds-crm-text);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+	font-size: 14px;
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+}
+
+.ds-crm-frontend-root *,
+.ds-crm-frontend-root *::before,
+.ds-crm-frontend-root *::after {
+	box-sizing: border-box;
+}
+
+.ds-crm-frontend-root.ds-crm-full-bleed {
+	width: 100%;
+	max-width: 100%;
+	margin-left: 0;
+	margin-right: 0;
+}
+
+.ds-crm-frontend-root .ds-crm-app {
+	display: flex;
+	min-height: calc(100vh - 160px);
+	width: 100%;
+	background: var(--ds-crm-bg);
+	border-radius: 12px;
+	box-shadow: 0 8px 32px rgba(15, 23, 42, 0.12);
+	overflow: hidden;
+}
+
+.ds-crm-frontend-root .ds-crm-sidebar {
+	flex-shrink: 0;
+	width: 220px;
+	background: var(--ds-crm-sidebar);
+	color: #fff;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.ds-crm-frontend-root .ds-crm-sidebar nav,
+.ds-crm-frontend-root .ds-crm-sidebar .ds-crm-sidebar-footer {
+	padding: 12px 12px 12px;
+}
+
+.ds-crm-frontend-root .ds-crm-brand {
+	font-weight: 600;
+	font-size: 15px;
+	margin-bottom: 20px;
+	color: #fff;
+}
+
+.ds-crm-frontend-root .ds-crm-sidebar ul {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+}
+
+.ds-crm-frontend-root .ds-crm-sidebar li {
+	margin: 0;
+	padding: 0;
+}
+
+.ds-crm-frontend-root .ds-crm-sidebar a,
+.ds-crm-frontend-root .ds-crm-sidebar a:visited,
+.ds-crm-frontend-root .ds-crm-sidebar a:focus {
+	display: flex;
+	gap: 8px;
+	padding: 10px 12px;
+	border-radius: 8px;
+	color: #dbe2f5 !important;
+	text-decoration: none !important;
+	font-weight: 500;
+	font-size: 14px;
+	line-height: 1.4;
+	background: transparent;
+	box-shadow: none;
+}
+
+.ds-crm-frontend-root .ds-crm-sidebar a:hover {
+	background: rgba(255, 255, 255, 0.1);
+	color: #fff !important;
+}
+
+.ds-crm-frontend-root .ds-crm-sidebar li.is-active a,
+.ds-crm-frontend-root .ds-crm-sidebar li.is-active a:hover {
+	background: rgba(255, 255, 255, 0.14);
+	color: #fff !important;
+}
+
+.ds-crm-frontend-root .ds-crm-content {
+	flex: 1;
+	min-width: 0;
+	padding: 18px;
+	padding-top: 0;
+	background: var(--ds-crm-bg);
+}
+
+.ds-crm-frontend-root .ds-crm-module {
+	width: 100%;
+	min-width: 0;
+}
+
+.ds-crm-frontend-root .ds-crm-topbar {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 16px;
+	margin-bottom: 16px;
+	font-size: 14px;
+}
+
+.ds-crm-frontend-root .ds-crm-topbar a,
+.ds-crm-frontend-root .ds-crm-topbar a:visited {
+	color: var(--ds-crm-accent);
+	text-decoration: none;
+	font-weight: 500;
+	background: none;
+	padding: 0;
+}
+
+.ds-crm-frontend-root .ds-crm-topbar a:hover {
+	text-decoration: underline;
+	color: var(--ds-crm-accent-hover);
+}
+
+.ds-crm-frontend-root .ds-crm-page-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 16px;
+	flex-wrap: wrap;
+}
+
+.ds-crm-frontend-root .ds-crm-page-header h1 {
+	margin: 0;
+	font-size: 24px;
+	font-weight: 600;
+	color: var(--ds-crm-text);
+	line-height: 1.3;
+}
+
+.ds-crm-frontend-root .ds-crm-module h2,
+.ds-crm-frontend-root .ds-crm-module h3 {
+	color: var(--ds-crm-text);
+	line-height: 1.3;
+	margin-top: 0;
+}
+
+.ds-crm-frontend-root .ds-crm-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 12px;
+}
+
+.ds-crm-frontend-root .ds-crm-toolbar input,
+.ds-crm-frontend-root .ds-crm-toolbar select {
+	width: auto;
+	flex: 1 1 140px;
+	min-width: 0;
+	max-width: 100%;
+	min-height: 36px;
+}
+
+.ds-crm-frontend-root .ds-crm-search {
+	flex: 2 1 240px;
+	min-width: 180px;
+}
+
+.ds-crm-frontend-root .ds-crm-header-actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	align-items: center;
+}
+
+.ds-crm-frontend-root .button,
+.ds-crm-frontend-root a.button,
+.ds-crm-frontend-root button.button {
+	display: inline-block;
+	min-height: 36px;
+	padding: 0 14px;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	background: #f6f7f7;
+	color: #2c3338 !important;
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 34px;
+	text-decoration: none !important;
+	cursor: pointer;
+	box-shadow: none;
+	transition: background 0.15s, border-color 0.15s;
+	vertical-align: middle;
+}
+
+.ds-crm-frontend-root .button:hover,
+.ds-crm-frontend-root a.button:hover,
+.ds-crm-frontend-root button.button:hover {
+	background: #f0f0f1;
+	border-color: #8c8f94;
+	color: #2c3338 !important;
+	text-decoration: none !important;
+}
+
+.ds-crm-frontend-root .button-primary,
+.ds-crm-frontend-root a.button-primary,
+.ds-crm-frontend-root button.button-primary,
+.ds-crm-frontend-root .button.button-primary,
+.ds-crm-frontend-root a.button.button-primary,
+.ds-crm-frontend-root button.button.button-primary {
+	background: var(--ds-crm-accent) !important;
+	border-color: var(--ds-crm-accent) !important;
+	color: #fff !important;
+}
+
+.ds-crm-frontend-root .button-primary:hover,
+.ds-crm-frontend-root a.button-primary:hover,
+.ds-crm-frontend-root button.button-primary:hover,
+.ds-crm-frontend-root .button-primary:focus,
+.ds-crm-frontend-root a.button-primary:focus,
+.ds-crm-frontend-root button.button-primary:focus,
+.ds-crm-frontend-root .button-primary:active,
+.ds-crm-frontend-root a.button-primary:active,
+.ds-crm-frontend-root button.button-primary:active,
+.ds-crm-frontend-root .button.button-primary:hover,
+.ds-crm-frontend-root a.button.button-primary:hover,
+.ds-crm-frontend-root button.button.button-primary:hover,
+.ds-crm-frontend-root .button.button-primary:focus,
+.ds-crm-frontend-root a.button.button-primary:focus,
+.ds-crm-frontend-root button.button.button-primary:focus {
+	background: var(--ds-crm-accent-hover) !important;
+	border-color: var(--ds-crm-accent-hover) !important;
+	color: #fff !important;
+	box-shadow: none !important;
+}
+
+.ds-crm-frontend-root .button-small {
+	min-height: 30px;
+	padding: 0 10px;
+	line-height: 28px;
+	font-size: 12px;
+}
+
+/* Icon-only row actions: equal squares (overrides padded .button / .button-small) */
+.ds-crm-frontend-root .ds-crm-actions .button.button-small,
+.ds-crm-frontend-root .ds-crm-actions-inner .button.button-small {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	min-width: 32px;
+	min-height: 32px;
+	padding: 0;
+	line-height: 1;
+	box-sizing: border-box;
+}
+
+.ds-crm-frontend-root .ds-crm-actions .button.button-small.ds-crm-btn-text,
+.ds-crm-frontend-root .ds-crm-actions-inner .button.button-small.ds-crm-btn-text,
+.ds-crm-frontend-root .ds-crm-amend-review-actions .button.button-small.ds-crm-btn-text,
+.ds-crm-frontend-root .ds-crm-history-product-actions .button.button-small.ds-crm-btn-text {
+	width: auto;
+	max-width: none;
+	min-width: 0;
+	height: auto;
+	min-height: 32px;
+	padding: 0 12px;
+	line-height: 1.25;
+	white-space: nowrap;
+}
+
+.ds-crm-frontend-root .ds-crm-modal-footer .button.ds-crm-modal-cancel,
+.ds-crm-frontend-root .ds-crm-form-actions .button.ds-crm-modal-cancel {
+	background: #fff !important;
+	border-color: #d1d5db !important;
+	color: #374151 !important;
+}
+
+.ds-crm-frontend-root .ds-crm-modal-footer .button.ds-crm-modal-cancel:hover,
+.ds-crm-frontend-root .ds-crm-form-actions .button.ds-crm-modal-cancel:hover {
+	background: #f9fafb !important;
+	border-color: #9ca3af !important;
+	color: #111827 !important;
+}
+
+.ds-crm-frontend-root .button.ds-crm-btn-void,
+.ds-crm-frontend-root a.button.ds-crm-btn-void,
+.ds-crm-frontend-root button.button.ds-crm-btn-void {
+	background: #fef2f2 !important;
+	border-color: #fecaca !important;
+	color: #991b1b !important;
+}
+
+.ds-crm-frontend-root .button.ds-crm-btn-void:hover,
+.ds-crm-frontend-root a.button.ds-crm-btn-void:hover,
+.ds-crm-frontend-root button.button.ds-crm-btn-void:hover {
+	background: #dc2626 !important;
+	border-color: #dc2626 !important;
+	color: #fff !important;
+}
+
+.ds-crm-frontend-root input[type="text"],
+.ds-crm-frontend-root input[type="number"],
+.ds-crm-frontend-root input[type="date"],
+.ds-crm-frontend-root input[type="email"],
+.ds-crm-frontend-root input[type="search"],
+.ds-crm-frontend-root input[type="password"],
+.ds-crm-frontend-root select,
+.ds-crm-frontend-root textarea {
+	max-width: 100%;
+	min-height: 36px;
+	padding: 6px 10px;
+	border: 1px solid var(--ds-crm-border);
+	border-radius: 6px;
+	background: #fff;
+	color: var(--ds-crm-text);
+	font: inherit;
+	box-shadow: none;
+	appearance: auto;
+}
+
+.ds-crm-frontend-root .ds-crm-form input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+.ds-crm-frontend-root .ds-crm-form select,
+.ds-crm-frontend-root .ds-crm-form textarea {
+	width: 100%;
+}
+
+.ds-crm-frontend-root input:focus,
+.ds-crm-frontend-root select:focus,
+.ds-crm-frontend-root textarea:focus {
+	border-color: var(--ds-crm-accent);
+	outline: 2px solid var(--ds-crm-accent-focus);
+	outline-offset: 0;
+}
+
+.ds-crm-frontend-root .ds-crm-table-wrap,
+.ds-crm-frontend-root .ds-crm-card,
+.ds-crm-frontend-root .ds-crm-chart-card,
+.ds-crm-frontend-root .ds-crm-kpi-card {
+	background: #fff;
+}
+
+.ds-crm-frontend-root .ds-crm-table {
+	width: 100%;
+	font-size: 14px;
+}
+
+.ds-crm-frontend-root .ds-crm-table th,
+.ds-crm-frontend-root .ds-crm-table td {
+	vertical-align: middle;
+}
+
+.ds-crm-frontend-root .ds-crm-notice {
+	margin-bottom: 14px;
+}
+
+.ds-crm-frontend-root .ds-crm-pagination {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 12px;
+	margin-top: 12px;
+}
+
+.ds-crm-frontend-root .ds-crm-modal {
+	z-index: 100000;
+}
+
+.ds-crm-frontend-root .ds-crm-autocomplete-floating {
+	z-index: 100010;
+}
+
+.ds-crm-frontend-root .ds-crm-toast-container {
+	z-index: 100020;
+}
+
+.ds-crm-frontend-root label {
+	font-weight: 600;
+	color: var(--ds-crm-text);
+}
+
+.ds-crm-frontend-root .description {
+	font-size: 13px;
+	color: #6b7280;
+}
+
+/* —— CRM login screen —— */
+body.ds-crm-login-screen .entry-header,
+body.ds-crm-login-screen .page-title,
+body.ds-crm-login-screen .ct-page-title {
+	display: none;
+}
+
+.ds-crm-login-page {
+	min-height: min(100vh, 735px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 2rem 1rem;
+	background: linear-gradient(160deg, var(--ds-crm-bg) 0%, color-mix(in srgb, var(--ds-crm-accent) 8%, #fff) 50%, var(--ds-crm-bg) 100%);
+}
+
+.ds-crm-login-shell {
+	width: 100%;
+	max-width: 440px;
+}
+
+.ds-crm-login-card {
+	background: #fff;
+	border-radius: 16px;
+	box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.04);
+	padding: 2rem 2rem 1.75rem;
+}
+
+.ds-crm-login-page .ds-crm-brand-login {
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	margin-bottom: 1.25rem;
+	padding-bottom: 1.25rem;
+	border-bottom: 1px solid var(--ds-crm-border);
+}
+
+.ds-crm-login-page .ds-crm-brand-login .ds-crm-brand-logo {
+	max-width: 220px;
+	max-height: 72px;
+	width: auto;
+	height: auto;
+}
+
+.ds-crm-login-page .ds-crm-brand-login .ds-crm-brand-name {
+	font-size: 1.35rem;
+	color: var(--ds-crm-text);
+}
+
+.ds-crm-login-intro {
+	text-align: center;
+	margin-bottom: 1.5rem;
+}
+
+.ds-crm-login-title {
+	margin: 0 0 0.35rem;
+	font-size: 1.5rem;
+	font-weight: 700;
+	color: var(--ds-crm-text);
+	line-height: 1.25;
+}
+
+.ds-crm-login-tagline {
+	margin: 0;
+	font-size: 0.9rem;
+	color: #6b7280;
+	line-height: 1.45;
+}
+
+.ds-crm-login-error {
+	margin-bottom: 1rem;
+	padding: 10px 12px;
+	border-radius: 8px;
+	background: #fef2f2;
+	border: 1px solid #fecaca;
+	color: #991b1b;
+	font-size: 14px;
+}
+
+.ds-crm-login-notice {
+	margin-bottom: 1rem;
+	padding: 10px 12px;
+	border-radius: 8px;
+	background: var(--ds-crm-accent-muted-bg);
+	border: 1px solid var(--ds-crm-accent-muted-border);
+	color: var(--ds-crm-accent-muted-text);
+	font-size: 14px;
+}
+
+.ds-crm-login-form {
+	margin: 0;
+}
+
+.ds-crm-login-field {
+	margin: 0 0 1rem;
+}
+
+.ds-crm-login-field label {
+	display: block;
+	margin-bottom: 6px;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--ds-crm-text);
+}
+
+.ds-crm-login-field .input {
+	width: 100%;
+	min-height: 44px;
+	padding: 10px 12px;
+	border: 1px solid var(--ds-crm-border);
+	border-radius: 8px;
+	font-size: 15px;
+	transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.ds-crm-login-field .input:focus {
+	border-color: var(--ds-crm-accent);
+	outline: none;
+	box-shadow: 0 0 0 3px var(--ds-crm-accent-focus);
+}
+
+.ds-crm-login-remember {
+	margin: 0 0 1.25rem;
+	font-size: 14px;
+}
+
+.ds-crm-login-remember label {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-weight: 500;
+	color: #4b5563;
+	cursor: pointer;
+}
+
+.ds-crm-login-submit {
+	margin: 0;
+}
+
+.ds-crm-login-button {
+	display: block;
+	width: 100%;
+	min-height: 46px;
+	padding: 0 16px;
+	border: none;
+	border-radius: 8px;
+	background: var(--ds-crm-accent);
+	color: #fff !important;
+	font-size: 15px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background 0.15s, transform 0.1s;
+}
+
+.ds-crm-login-button:hover {
+	background: var(--ds-crm-accent-hover);
+}
+
+.ds-crm-login-button:active {
+	transform: scale(0.99);
+}
+
+.ds-crm-login-footer {
+	margin: 1.25rem 0 0;
+	text-align: center;
+	font-size: 14px;
+}
+
+.ds-crm-login-footer a {
+	color: var(--ds-crm-accent);
+	font-weight: 500;
+	text-decoration: none;
+}
+
+.ds-crm-login-footer a:hover {
+	text-decoration: underline;
+	color: var(--ds-crm-accent-hover);
+}
+
+.ds-crm-frontend-root .ds-crm-brand-sidebar {
+	width: 100%;
+	margin: 0 0 12px;
+	padding: 0;
+	align-items: stretch;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.ds-crm-frontend-root .ds-crm-brand-sidebar .ds-crm-brand-logo-wrap {
+	display: block;
+	width: 100%;
+	line-height: 0;
+}
+
+.ds-crm-frontend-root .ds-crm-brand-sidebar .ds-crm-brand-logo {
+	display: block;
+	width: 100%;
+	max-width: 100%;
+	height: auto;
+	max-height: 88px;
+	object-fit: contain;
+	object-position: center top;
+}
+
+.ds-crm-frontend-root .ds-crm-brand-sidebar .ds-crm-brand-text {
+	padding: 10px 12px 12px;
+}
+
+.ds-crm-frontend-root .ds-crm-brand-sidebar.has-sidebar-logo .ds-crm-brand-text {
+	display: none;
+}
+
+.ds-crm-frontend-root .ds-crm-brand-sidebar .ds-crm-brand-name {
+	color: #fff;
+	font-size: 15px;
+}
+
+.ds-crm-frontend-root .ds-crm-dashboard-header {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	flex-wrap: wrap;
+}
+
+
+.ds-crm-access-denied {
+	padding: 1.5rem;
+	background: #fef2f2;
+	border: 1px solid #fecaca;
+	border-radius: 8px;
+	color: #991b1b;
+}
+
+@media (max-width: 900px) {
+	.ds-crm-frontend-root .ds-crm-app {
+		min-height: auto;
+		border-radius: 0;
+		box-shadow: none;
+	}
+
+	.ds-crm-frontend-root .ds-crm-content {
+		padding: 12px;
+	}
+}
