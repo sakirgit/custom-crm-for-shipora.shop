@@ -172,6 +172,7 @@ class Settings_Controller extends CRM_Controller_Base {
 					'Asia/Dhaka'
 				);
 				$settings['tracking_show_dual_tz'] = ! empty( $_POST['tracking_show_dual_tz'] ) ? 1 : 0;
+				$settings['missing_auto_approve']  = ! empty( $_POST['missing_auto_approve'] ) ? 1 : 0;
 				if ( 'general' === $section || isset( $_POST['client_orders_scope'] ) ) {
 					$settings['client_orders_scope'] = isset( $_POST['client_orders_scope'] ) && 'all' === sanitize_key( wp_unslash( $_POST['client_orders_scope'] ) ) ? 'all' : 'own';
 				}

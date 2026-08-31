@@ -263,6 +263,10 @@
 		if (dualTz) {
 			dualTz.checked = s.tracking_show_dual_tz === 1 || s.tracking_show_dual_tz === true || s.tracking_show_dual_tz === '1';
 		}
+		const missingAuto = form.querySelector('[name="missing_auto_approve"]');
+		if (missingAuto) {
+			missingAuto.checked = s.missing_auto_approve === 1 || s.missing_auto_approve === true || s.missing_auto_approve === '1';
+		}
 
 		['color_sidebar', 'color_accent', 'color_accent_secondary'].forEach((name) => {
 			const colorInput = form.querySelector(`[name="${name}"]`);
@@ -323,6 +327,7 @@
 				payload.china_timezone = form.querySelector('[name="china_timezone"]')?.value || 'Asia/Shanghai';
 				payload.bangladesh_timezone = form.querySelector('[name="bangladesh_timezone"]')?.value || 'Asia/Dhaka';
 				payload.tracking_show_dual_tz = form.querySelector('[name="tracking_show_dual_tz"]')?.checked ? '1' : '0';
+				payload.missing_auto_approve = form.querySelector('[name="missing_auto_approve"]')?.checked ? '1' : '0';
 				break;
 		}
 

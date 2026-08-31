@@ -146,6 +146,11 @@ $render_company_options = static function ( $companies ) {
 			</table>
 		</div>
 		<p class="ds-crm-shipment-review-pricing-hint description" hidden></p>
+		<p class="ds-crm-shipment-approval-note-field" hidden>
+			<label for="shipment-order-approval-note"><?php esc_html_e( 'Approval note', 'ds-prod-import-crm' ); ?> <span class="description"><?php esc_html_e( '(optional)', 'ds-prod-import-crm' ); ?></span></label>
+			<textarea id="shipment-order-approval-note" name="approval_note" class="ds-crm-shipment-approval-note" rows="3" placeholder="<?php esc_attr_e( 'Add a note for this approval…', 'ds-prod-import-crm' ); ?>"></textarea>
+		</p>
+		<div class="ds-crm-shipment-approval-note-saved" hidden></div>
 		<div class="ds-crm-shipment-order-review-actions" hidden>
 			<?php if ( ! $is_workspace ) : ?>
 			<button type="button" class="button ds-crm-shipment-save-prices"><?php esc_html_e( 'Save prices', 'ds-prod-import-crm' ); ?></button>

@@ -265,7 +265,9 @@ class Warehouse_Controller extends CRM_Controller_Base {
 			$shipped   = (int) $line['quantity'];
 			$received  = crm_shipment_item_qty_received( (int) $line['id'] );
 			$missing   = crm_shipment_item_qty_missing( (int) $line['id'] );
-			$remaining = crm_shipment_item_qty_remaining( $shipped, $received, $missing );
+			$pending   = crm_shipment_item_qty_pending_missing( (int) $line['id'] );
+			$held      = crm_shipment_item_qty_missing_held( (int) $line['id'] );
+			$remaining = crm_shipment_item_qty_remaining( $shipped, $received, $held );
 
 			$items[] = array(
 				'export_shipment_item_id' => (int) $line['id'],
@@ -278,6 +280,7 @@ class Warehouse_Controller extends CRM_Controller_Base {
 				'qty_shipped'             => $shipped,
 				'qty_received'            => $received,
 				'qty_missing'             => $missing,
+				'qty_pending_missing'     => $pending,
 				'qty_remaining'           => $remaining,
 				'weight_kg_shipped'       => (float) $line['weight_kg'],
 				'weight_kg_suggested'     => $shipped > 0 && $remaining > 0
@@ -527,6 +530,15 @@ class Warehouse_Controller extends CRM_Controller_Base {
 		self::begin_transaction();
 
 		foreach ( $items as $item ) {
+			if ( in_array( (string) ( $item['missing_status'] ?? '' ), array( 'approved', 'auto_approved' ), true )
+				&& (int) $item['missing_quantity'] > 0 ) {
+				$reversed = Shipments_Controller::reverse_missing_approval_for_receive_item( $item );
+				if ( is_wp_error( $reversed ) ) {
+					self::rollback_transaction();
+					wp_send_json_error( array( 'message' => $reversed->get_error_message() ) );
+				}
+			}
+
 			$qty = (int) $item['quantity'];
 			if ( $qty < 1 ) {
 				continue;
@@ -739,7 +751,7 @@ class Warehouse_Controller extends CRM_Controller_Base {
 			$ship_line = $by_id[ $esi_id ];
 			$shipped   = (int) $ship_line['quantity'];
 			$already_r = crm_shipment_item_qty_received( $esi_id );
-			$already_m = crm_shipment_item_qty_missing( $esi_id );
+			$already_m = crm_shipment_item_qty_missing_held( $esi_id );
 			$remaining = crm_shipment_item_qty_remaining( $shipped, $already_r, $already_m );
 
 			if ( ( $quantity + $missing ) > $remaining ) {
@@ -980,6 +992,34 @@ class Warehouse_Controller extends CRM_Controller_Base {
 				wp_send_json_error( array( 'message' => __( 'Failed to save receive items.', 'ds-prod-import-crm' ) ) );
 			}
 
+			$receive_item_id = (int) $wpdb->insert_id;
+			$missing_qty     = (int) $item['missing_quantity'];
+
+			if ( $missing_qty > 0 ) {
+				$auto_approve   = crm_missing_auto_approve_enabled();
+				$missing_status = $auto_approve ? 'auto_approved' : 'pending';
+				$wpdb->update(
+					$items_table,
+					array( 'missing_status' => $missing_status ),
+					array( 'id' => $receive_item_id ),
+					array( '%s' ),
+					array( '%d' )
+				);
+
+				if ( $auto_approve ) {
+					$approval = Shipments_Controller::apply_missing_approval_for_receive_item(
+						$receive_item_id,
+						'auto_approved',
+						'',
+						CRM_Audit::current_user_id()
+					);
+					if ( is_wp_error( $approval ) ) {
+						self::rollback_transaction();
+						wp_send_json_error( array( 'message' => $approval->get_error_message() ) );
+					}
+				}
+			}
+
 			if ( (int) $item['quantity'] < 1 ) {
 				continue;
 			}
@@ -1004,6 +1044,13 @@ class Warehouse_Controller extends CRM_Controller_Base {
 			crm_sync_shipment_receive_status( $shipment_id );
 		}
 
+		$pending_missing = 0;
+		foreach ( $items as $item ) {
+			if ( (int) $item['missing_quantity'] > 0 && ! crm_missing_auto_approve_enabled() ) {
+				$pending_missing += (int) $item['missing_quantity'];
+			}
+		}
+
 		self::log_activity(
 			'create',
 			'warehouse',
@@ -1018,9 +1065,16 @@ class Warehouse_Controller extends CRM_Controller_Base {
 
 		wp_send_json_success(
 			array(
-				'message'        => __( 'Stock received successfully.', 'ds-prod-import-crm' ),
-				'id'             => $receive_id,
-				'receive_number' => $receive_number,
+				'message'         => $pending_missing > 0
+					? sprintf(
+						/* translators: %d: number of missing pieces awaiting approval */
+						__( 'Stock received. %d missing piece(s) reported — awaiting admin approval in Supply history.', 'ds-prod-import-crm' ),
+						$pending_missing
+					)
+					: __( 'Stock received successfully.', 'ds-prod-import-crm' ),
+				'id'              => $receive_id,
+				'receive_number'  => $receive_number,
+				'pending_missing' => $pending_missing,
 			)
 		);
 	}

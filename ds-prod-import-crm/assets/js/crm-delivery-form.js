@@ -6,7 +6,7 @@
 		return;
 	}
 
-	const { postAjax, debounce, formatDate, formatAmount, formatWeight, parseWeight, sumWeights, DsCrmUI, buildModuleUrl } = DsCrm;
+	const { postAjax, debounce, formatDate, formatAmount, formatWeight, parseWeight, formatWeightInputValue, wireWeightInputs, sumWeights, DsCrmUI, buildModuleUrl } = DsCrm;
 	const form = root.querySelector('.ds-crm-delivery-form');
 	const orderIdInput = form?.querySelector('[name="order_id"]');
 	const orderSearch = form?.querySelector('.ds-crm-delivery-order-search');
@@ -104,7 +104,7 @@
 			return;
 		}
 		if (qty > 0) {
-			weightInput.value = (Math.round(perUnit * qty * 1000) / 1000).toFixed(3).replace(/\.?0+$/, '');
+			weightInput.value = formatWeightInputValue(perUnit * qty);
 		} else {
 			weightInput.value = '0';
 		}
@@ -210,7 +210,7 @@
 				<td>
 					<input type="number" class="line-deliver-qty ds-crm-qty-input" min="0" max="${max}" step="1" value="0"${disabled} data-max="${max}" />
 				</td>
-				<td><input type="number" class="line-weight ds-crm-money-input" min="0" step="0.001" value="0"${disabled} /></td>
+				<td><input type="number" class="line-weight ds-crm-money-input" min="0" step="0.01" value="0.00"${disabled} /></td>
 				<td><input type="number" class="line-shipping-rate ds-crm-money-input" min="0" step="0.01" value="${rate > 0 ? rate.toFixed(2) : '0'}"${disabled} /></td>
 				<td class="ds-crm-line-shipping-bill"><span class="line-shipping-bill">${formatAmount(0)}</span></td>
 			</tr>`;
@@ -218,6 +218,7 @@
 			.join('');
 
 		linesBody.querySelectorAll('tr[data-order-item-id]').forEach(wireLineRow);
+		wireWeightInputs(linesBody);
 		updateTotals();
 	};
 

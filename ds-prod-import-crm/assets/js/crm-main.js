@@ -86,6 +86,37 @@ const parseWeight = (value) => {
 	return Math.round(n * 100) / 100;
 };
 
+const formatWeightInputValue = (value) => parseWeight(value).toFixed(2);
+
+const normalizeWeightInput = (input) => {
+	if (!input || input.disabled) {
+		return;
+	}
+	if (input.value === '' || input.value === null) {
+		return;
+	}
+	const normalized = formatWeightInputValue(input.value);
+	if (input.value !== normalized) {
+		input.value = normalized;
+	}
+};
+
+const wireWeightInput = (input) => {
+	if (!input || input.dataset.weightWired === '1') {
+		return;
+	}
+	input.dataset.weightWired = '1';
+	input.step = '0.01';
+	input.inputMode = 'decimal';
+	if (input.value !== '' && input.value !== null) {
+		normalizeWeightInput(input);
+	}
+};
+
+const wireWeightInputs = (root = document) => {
+	root.querySelectorAll('input.line-weight, input.ds-crm-history-amend-weight, input.ds-crm-weight-input').forEach(wireWeightInput);
+};
+
 const formatWeight = (kg, { withUnit = false } = {}) => {
 	const value = parseWeight(kg);
 	const formatted = value.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1671,6 +1702,9 @@ window.DsCrm = {
 	formatAmount,
 	formatWeight,
 	parseWeight,
+	formatWeightInputValue,
+	normalizeWeightInput,
+	wireWeightInputs,
 	sumWeights,
 	allocateByWeight,
 	formatDate,
@@ -1686,6 +1720,7 @@ window.DsCrm = {
 document.addEventListener('DOMContentLoaded', () => {
 	DsCrmUI.mountAllModals();
 	DsCrmUI.wireProductImageLightbox();
+	wireWeightInputs(document);
 
 	const app = document.querySelector('.ds-crm-app');
 	const toggle = app?.querySelector('.ds-crm-nav-toggle');
@@ -1727,3 +1762,17 @@ document.addEventListener('DOMContentLoaded', () => {
 		{ passive: true }
 	);
 });
+
+document.addEventListener(
+	'blur',
+	(e) => {
+		const target = e.target;
+		if (
+			target instanceof HTMLInputElement &&
+			target.matches('input.line-weight, input.ds-crm-history-amend-weight, input.ds-crm-weight-input')
+		) {
+			normalizeWeightInput(target);
+		}
+	},
+	true
+);

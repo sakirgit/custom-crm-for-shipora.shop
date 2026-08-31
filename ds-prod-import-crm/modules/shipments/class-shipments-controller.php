@@ -33,6 +33,7 @@ class Shipments_Controller extends CRM_Controller_Base {
 		add_action( 'wp_ajax_crm_shipments_amend_request', array( __CLASS__, 'request_amendment' ) );
 		add_action( 'wp_ajax_crm_shipments_amend_review', array( __CLASS__, 'review_amendment' ) );
 		add_action( 'wp_ajax_crm_shipments_amendments_list', array( __CLASS__, 'list_amendments' ) );
+		add_action( 'wp_ajax_crm_shipments_missing_review', array( __CLASS__, 'review_missing_item' ) );
 	}
 
 	/**
@@ -217,6 +218,11 @@ class Shipments_Controller extends CRM_Controller_Base {
 			$row['warehouse_locked']        = $warehouse_locked;
 			$row['can_amend']               = ! $warehouse_locked && 'void' !== ( $row['status'] ?? '' ) && $can_amend_cap;
 			$row['can_review']              = $can_review_cap && ! empty( $pending_list );
+
+			$missing_reports = self::get_missing_reports_for_shipment( $sid );
+			$row['missing_reports']         = $missing_reports;
+			$row['has_pending_missing']     = self::missing_reports_have_status( $missing_reports, 'pending' );
+			$row['can_review_missing']      = $can_review_cap && $row['has_pending_missing'];
 		}
 		unset( $row );
 
@@ -2267,5 +2273,465 @@ class Shipments_Controller extends CRM_Controller_Base {
 		}
 
 		return __( 'This order must be accepted before it can be exported.', 'ds-prod-import-crm' );
+	}
+
+	/**
+	 * Missing-product reports for one export shipment (warehouse receive lines).
+	 *
+	 * @param int $shipment_id Export shipment ID.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function get_missing_reports_for_shipment( $shipment_id ) {
+		global $wpdb;
+
+		$shipment_id = absint( $shipment_id );
+		if ( $shipment_id < 1 ) {
+			return array();
+		}
+
+		$receive_table = crm_table( 'warehouse_receives' );
+		$items_table   = crm_table( 'receive_items' );
+		$products_table = crm_table( 'products' );
+		$users_table   = $wpdb->users;
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT ri.id AS receive_item_id, ri.receive_id, ri.export_shipment_item_id, ri.product_name, ri.color, ri.size,
+					ri.missing_quantity, ri.missing_status, ri.missing_review_notes, ri.missing_reviewed_at, ri.notes,
+					ri.created_at AS reported_at, r.receive_number, r.receive_date,
+					ru.display_name AS reported_by_name, rv.display_name AS reviewed_by_name,
+					" . crm_sql_product_image_url( 'p' ) . " AS product_image_url
+				FROM {$items_table} ri
+				INNER JOIN {$receive_table} r ON r.id = ri.receive_id
+				LEFT JOIN {$products_table} p ON p.id = ri.product_id
+				LEFT JOIN {$users_table} ru ON ru.ID = r.created_by
+				LEFT JOIN {$users_table} rv ON rv.ID = ri.missing_reviewed_by
+				WHERE r.shipment_id = %d AND ri.missing_quantity > 0
+				ORDER BY ri.created_at DESC, ri.id DESC",
+				$shipment_id
+			),
+			ARRAY_A
+		);
+
+		if ( ! $rows ) {
+			return array();
+		}
+
+		$can_review = current_user_can( 'crm_shipments_review' );
+		$reports    = array();
+
+		foreach ( $rows as $row ) {
+			$status = (string) ( $row['missing_status'] ?? 'pending' );
+			if ( '' === $status ) {
+				$status = 'pending';
+			}
+
+			$reports[] = array(
+				'receive_item_id'         => (int) $row['receive_item_id'],
+				'receive_id'              => (int) $row['receive_id'],
+				'receive_number'          => (string) ( $row['receive_number'] ?? '' ),
+				'receive_date'            => (string) ( $row['receive_date'] ?? '' ),
+				'export_shipment_item_id' => (int) ( $row['export_shipment_item_id'] ?? 0 ),
+				'product_name'            => (string) ( $row['product_name'] ?? '' ),
+				'product_image_url'     => ! empty( $row['product_image_url'] ) ? esc_url_raw( $row['product_image_url'] ) : '',
+				'color'                   => (string) ( $row['color'] ?? '' ),
+				'size'                    => (string) ( $row['size'] ?? '' ),
+				'missing_quantity'        => (int) ( $row['missing_quantity'] ?? 0 ),
+				'status'                  => $status,
+				'status_label'            => self::missing_status_label( $status ),
+				'reason'                  => (string) ( $row['notes'] ?? '' ),
+				'review_notes'            => (string) ( $row['missing_review_notes'] ?? '' ),
+				'reported_by_name'        => (string) ( $row['reported_by_name'] ?? '' ),
+				'reported_at'             => (string) ( $row['reported_at'] ?? '' ),
+				'reviewed_by_name'        => (string) ( $row['reviewed_by_name'] ?? '' ),
+				'reviewed_at'             => (string) ( $row['missing_reviewed_at'] ?? '' ),
+				'can_review'              => 'pending' === $status && $can_review,
+			);
+		}
+
+		return $reports;
+	}
+
+	/**
+	 * Human label for a missing-item status.
+	 *
+	 * @param string $status Status key.
+	 * @return string
+	 */
+	private static function missing_status_label( $status ) {
+		switch ( $status ) {
+			case 'approved':
+				return __( 'Approved', 'ds-prod-import-crm' );
+			case 'auto_approved':
+				return __( 'Auto-approved', 'ds-prod-import-crm' );
+			case 'declined':
+				return __( 'Declined', 'ds-prod-import-crm' );
+			case 'pending':
+			default:
+				return __( 'Pending approval', 'ds-prod-import-crm' );
+		}
+	}
+
+	/**
+	 * Whether any missing report matches a status.
+	 *
+	 * @param array<int, array<string, mixed>> $reports Missing reports.
+	 * @param string                           $status  Status key.
+	 * @return bool
+	 */
+	private static function missing_reports_have_status( array $reports, $status ) {
+		foreach ( $reports as $report ) {
+			if ( ( $report['status'] ?? '' ) === $status ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Supervisor approves or declines a warehouse missing report (per line).
+	 *
+	 * @return void
+	 */
+	public static function review_missing_item() {
+		self::verify_request( 'crm_shipments_review' );
+
+		$receive_item_id = isset( $_POST['receive_item_id'] ) ? absint( $_POST['receive_item_id'] ) : 0;
+		$decision        = isset( $_POST['decision'] ) ? sanitize_key( wp_unslash( $_POST['decision'] ) ) : '';
+		$review_notes    = isset( $_POST['review_notes'] ) ? sanitize_textarea_field( wp_unslash( $_POST['review_notes'] ) ) : '';
+
+		if ( $receive_item_id < 1 ) {
+			wp_send_json_error( array( 'message' => __( 'Invalid missing report.', 'ds-prod-import-crm' ) ) );
+		}
+
+		if ( ! in_array( $decision, array( 'approved', 'declined' ), true ) ) {
+			wp_send_json_error( array( 'message' => __( 'Choose accept or decline.', 'ds-prod-import-crm' ) ) );
+		}
+
+		if ( 'approved' === $decision ) {
+			$result = self::apply_missing_approval_for_receive_item(
+				$receive_item_id,
+				'approved',
+				$review_notes,
+				get_current_user_id()
+			);
+		} else {
+			$result = self::decline_missing_report( $receive_item_id, $review_notes, get_current_user_id() );
+		}
+
+		if ( is_wp_error( $result ) ) {
+			wp_send_json_error( array( 'message' => $result->get_error_message() ) );
+		}
+
+		wp_send_json_success(
+			array(
+				'message' => 'approved' === $decision
+					? __( 'Missing quantity accepted. Product qty is restored for China to supply again.', 'ds-prod-import-crm' )
+					: __( 'Missing report declined. Warehouse may receive this quantity again.', 'ds-prod-import-crm' ),
+			)
+		);
+	}
+
+	/**
+	 * Apply missing approval: reduce supplied qty and restore export pool.
+	 *
+	 * @param int    $receive_item_id Receive item ID.
+	 * @param string $status          approved|auto_approved.
+	 * @param string $review_notes    Optional review note.
+	 * @param int    $reviewer_id     Reviewer user ID.
+	 * @return true|\WP_Error
+	 */
+	public static function apply_missing_approval_for_receive_item( $receive_item_id, $status = 'approved', $review_notes = '', $reviewer_id = 0 ) {
+		global $wpdb;
+
+		$receive_item_id = absint( $receive_item_id );
+		$items_table     = crm_table( 'receive_items' );
+		$row             = $wpdb->get_row(
+			$wpdb->prepare( "SELECT * FROM {$items_table} WHERE id = %d", $receive_item_id ),
+			ARRAY_A
+		);
+
+		if ( ! $row || (int) $row['missing_quantity'] < 1 ) {
+			return new \WP_Error( 'missing_invalid', __( 'Missing report not found.', 'ds-prod-import-crm' ) );
+		}
+
+		$current_status = (string) ( $row['missing_status'] ?? '' );
+		if ( in_array( $current_status, array( 'approved', 'auto_approved', 'declined' ), true ) ) {
+			return new \WP_Error( 'missing_reviewed', __( 'This missing report was already reviewed.', 'ds-prod-import-crm' ) );
+		}
+
+		$esi_id      = (int) ( $row['export_shipment_item_id'] ?? 0 );
+		$missing_qty = (int) $row['missing_quantity'];
+		if ( $esi_id < 1 || $missing_qty < 1 ) {
+			return new \WP_Error( 'missing_invalid', __( 'Missing report is not linked to a shipment line.', 'ds-prod-import-crm' ) );
+		}
+
+		$ship_line = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT id, shipment_id, quantity, weight_kg, product_name FROM ' . crm_table( 'export_shipment_items' ) . ' WHERE id = %d',
+				$esi_id
+			),
+			ARRAY_A
+		);
+
+		if ( ! $ship_line ) {
+			return new \WP_Error( 'shipment_line_missing', __( 'Shipment line not found for this missing report.', 'ds-prod-import-crm' ) );
+		}
+
+		$current_qty = (int) $ship_line['quantity'];
+		if ( $missing_qty > $current_qty ) {
+			return new \WP_Error(
+				'missing_exceeds_shipped',
+				sprintf(
+					/* translators: %s: product name */
+					__( '%s: missing qty exceeds current supplied qty on the shipment.', 'ds-prod-import-crm' ),
+					$ship_line['product_name']
+				)
+			);
+		}
+
+		$new_qty      = $current_qty - $missing_qty;
+		$current_w    = (float) $ship_line['weight_kg'];
+		$new_weight   = $new_qty > 0 && $current_qty > 0
+			? crm_parse_weight( $current_w * ( $new_qty / $current_qty ) )
+			: 0.0;
+		$shipment_id  = (int) $ship_line['shipment_id'];
+		$now          = current_time( 'mysql' );
+		$reviewer_id  = absint( $reviewer_id );
+
+		if ( $new_qty < 1 ) {
+			$wpdb->delete( crm_table( 'export_shipment_items' ), array( 'id' => $esi_id ), array( '%d' ) );
+		} else {
+			$wpdb->update(
+				crm_table( 'export_shipment_items' ),
+				array(
+					'quantity'  => $new_qty,
+					'weight_kg' => $new_weight,
+				),
+				array( 'id' => $esi_id ),
+				array( '%d', '%f' ),
+				array( '%d' )
+			);
+		}
+
+		$total_kg = (float) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT COALESCE(SUM(weight_kg), 0) FROM ' . crm_table( 'export_shipment_items' ) . ' WHERE shipment_id = %d',
+				$shipment_id
+			)
+		);
+
+		$wpdb->update(
+			crm_table( 'export_shipments' ),
+			array(
+				'total_kg'   => $total_kg,
+				'updated_at' => $now,
+			),
+			array( 'id' => $shipment_id ),
+			array( '%f', '%s' ),
+			array( '%d' )
+		);
+
+		$wpdb->update(
+			$items_table,
+			array(
+				'missing_status'       => in_array( $status, array( 'approved', 'auto_approved' ), true ) ? $status : 'approved',
+				'missing_review_notes' => $review_notes,
+				'missing_reviewed_by'  => $reviewer_id > 0 ? $reviewer_id : null,
+				'missing_reviewed_at'  => $now,
+			),
+			array( 'id' => $receive_item_id ),
+			array( '%s', '%s', '%d', '%s' ),
+			array( '%d' )
+		);
+
+		crm_sync_shipment_receive_status( $shipment_id );
+
+		$shipment = self::fetch_shipment_row( $shipment_id );
+		if ( $shipment ) {
+			self::log_activity(
+				'update',
+				'shipments',
+				$shipment_id,
+				sprintf(
+					'Approved missing qty on %s — %s (%d pcs restored to export)',
+					$shipment['shipment_number'],
+					$ship_line['product_name'],
+					$missing_qty
+				),
+				array(
+					'order_id'        => (int) ( $shipment['order_id'] ?? 0 ),
+					'receive_item_id' => $receive_item_id,
+				)
+			);
+		}
+
+		return true;
+	}
+
+	/**
+	 * Decline a pending missing report so warehouse can receive the qty again.
+	 *
+	 * @param int    $receive_item_id Receive item ID.
+	 * @param string $review_notes    Optional review note.
+	 * @param int    $reviewer_id     Reviewer user ID.
+	 * @return true|\WP_Error
+	 */
+	public static function decline_missing_report( $receive_item_id, $review_notes = '', $reviewer_id = 0 ) {
+		global $wpdb;
+
+		$receive_item_id = absint( $receive_item_id );
+		$items_table     = crm_table( 'receive_items' );
+		$row             = $wpdb->get_row(
+			$wpdb->prepare( "SELECT * FROM {$items_table} WHERE id = %d", $receive_item_id ),
+			ARRAY_A
+		);
+
+		if ( ! $row || (int) $row['missing_quantity'] < 1 ) {
+			return new \WP_Error( 'missing_invalid', __( 'Missing report not found.', 'ds-prod-import-crm' ) );
+		}
+
+		if ( 'pending' !== (string) ( $row['missing_status'] ?? 'pending' ) ) {
+			return new \WP_Error( 'missing_reviewed', __( 'This missing report was already reviewed.', 'ds-prod-import-crm' ) );
+		}
+
+		$receive = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT shipment_id FROM ' . crm_table( 'warehouse_receives' ) . ' WHERE id = %d',
+				(int) $row['receive_id']
+			),
+			ARRAY_A
+		);
+
+		$now = current_time( 'mysql' );
+		$wpdb->update(
+			$items_table,
+			array(
+				'missing_status'       => 'declined',
+				'missing_review_notes' => $review_notes,
+				'missing_reviewed_by'  => $reviewer_id > 0 ? $reviewer_id : null,
+				'missing_reviewed_at'  => $now,
+			),
+			array( 'id' => $receive_item_id ),
+			array( '%s', '%s', '%d', '%s' ),
+			array( '%d' )
+		);
+
+		$shipment_id = isset( $receive['shipment_id'] ) ? (int) $receive['shipment_id'] : 0;
+		if ( $shipment_id > 0 ) {
+			crm_sync_shipment_receive_status( $shipment_id );
+		}
+
+		return true;
+	}
+
+	/**
+	 * Undo missing approval when a warehouse receive is voided.
+	 *
+	 * @param array<string, mixed> $receive_item Receive item row.
+	 * @return true|\WP_Error
+	 */
+	public static function reverse_missing_approval_for_receive_item( array $receive_item ) {
+		global $wpdb;
+
+		$esi_id      = (int) ( $receive_item['export_shipment_item_id'] ?? 0 );
+		$missing_qty = (int) ( $receive_item['missing_quantity'] ?? 0 );
+		if ( $esi_id < 1 || $missing_qty < 1 ) {
+			return true;
+		}
+
+		$ship_line = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT id, shipment_id, quantity, weight_kg, product_name FROM ' . crm_table( 'export_shipment_items' ) . ' WHERE id = %d',
+				$esi_id
+			),
+			ARRAY_A
+		);
+
+		if ( ! $ship_line ) {
+			$receive_id  = (int) ( $receive_item['receive_id'] ?? 0 );
+			$shipment_id = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					'SELECT shipment_id FROM ' . crm_table( 'warehouse_receives' ) . ' WHERE id = %d',
+					$receive_id
+				)
+			);
+			if ( $shipment_id < 1 ) {
+				return true;
+			}
+
+			$order_id = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					'SELECT order_id FROM ' . crm_table( 'export_shipments' ) . ' WHERE id = %d',
+					$shipment_id
+				)
+			);
+
+			$order_item_id = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					'SELECT id FROM ' . crm_table( 'order_items' ) . ' WHERE order_id = %d AND product_name = %s LIMIT 1',
+					$order_id,
+					$receive_item['product_name'] ?? ''
+				)
+			);
+
+			$wpdb->insert(
+				crm_table( 'export_shipment_items' ),
+				array(
+					'shipment_id'   => $shipment_id,
+					'order_item_id' => $order_item_id,
+					'product_name'  => $receive_item['product_name'] ?? '',
+					'color'         => $receive_item['color'] ?? '',
+					'size'          => $receive_item['size'] ?? '',
+					'quantity'      => $missing_qty,
+					'weight_kg'     => 0,
+					'created_at'    => current_time( 'mysql' ),
+				),
+				array( '%d', '%d', '%s', '%s', '%s', '%d', '%f', '%s' )
+			);
+
+			crm_sync_shipment_receive_status( $shipment_id );
+			return true;
+		}
+
+		$new_qty    = (int) $ship_line['quantity'] + $missing_qty;
+		$current_w  = (float) $ship_line['weight_kg'];
+		$current_q  = max( 1, (int) $ship_line['quantity'] );
+		$new_weight = crm_parse_weight( $current_w + ( $current_w / $current_q ) * $missing_qty );
+
+		$wpdb->update(
+			crm_table( 'export_shipment_items' ),
+			array(
+				'quantity'  => $new_qty,
+				'weight_kg' => $new_weight,
+			),
+			array( 'id' => $esi_id ),
+			array( '%d', '%f' ),
+			array( '%d' )
+		);
+
+		$shipment_id = (int) $ship_line['shipment_id'];
+		$total_kg    = (float) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT COALESCE(SUM(weight_kg), 0) FROM ' . crm_table( 'export_shipment_items' ) . ' WHERE shipment_id = %d',
+				$shipment_id
+			)
+		);
+
+		$wpdb->update(
+			crm_table( 'export_shipments' ),
+			array(
+				'total_kg'   => $total_kg,
+				'updated_at' => current_time( 'mysql' ),
+			),
+			array( 'id' => $shipment_id ),
+			array( '%f', '%s' ),
+			array( '%d' )
+		);
+
+		crm_sync_shipment_receive_status( $shipment_id );
+
+		return true;
 	}
 }

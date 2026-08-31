@@ -393,16 +393,24 @@ class Companies_Controller extends CRM_Controller_Base {
 		$params = array( $company_id );
 
 		if ( 'payments' === $section ) {
-			$table    = crm_table( 'company_payments' );
-			$where[0] = 'p.company_id = %d';
-			$date_col = 'p.payment_date';
+			$table         = crm_table( 'company_payments' );
+			$clients_table = crm_table( 'clients' );
+			$client_id     = isset( $_POST['client_id'] ) ? absint( $_POST['client_id'] ) : 0;
+			$where[0]      = 'p.company_id = %d';
+			$date_col      = 'p.payment_date';
+			$from_sql      = "FROM {$table} p LEFT JOIN {$clients_table} cl ON cl.id = p.client_id";
 			if ( $search ) {
 				$like     = '%' . $wpdb->esc_like( $search ) . '%';
-				$where[]  = '(p.payment_number LIKE %s OR p.payment_method LIKE %s OR p.reference LIKE %s OR p.notes LIKE %s)';
+				$where[]  = '(p.payment_number LIKE %s OR p.payment_method LIKE %s OR p.reference LIKE %s OR p.notes LIKE %s OR cl.name LIKE %s)';
 				$params[] = $like;
 				$params[] = $like;
 				$params[] = $like;
 				$params[] = $like;
+				$params[] = $like;
+			}
+			if ( $client_id > 0 ) {
+				$where[]  = 'p.client_id = %d';
+				$params[] = $client_id;
 			}
 			if ( $dates['date_from'] ) {
 				$where[]  = "{$date_col} >= %s";
@@ -413,8 +421,8 @@ class Companies_Controller extends CRM_Controller_Base {
 				$params[] = $dates['date_to'];
 			}
 			$where_sql = implode( ' AND ', $where );
-			$count_sql = "SELECT COUNT(*) FROM {$table} p WHERE {$where_sql}";
-			$list_sql  = "SELECT p.* FROM {$table} p WHERE {$where_sql} ORDER BY p.payment_date DESC, p.id DESC LIMIT %d OFFSET %d";
+			$count_sql = "SELECT COUNT(*) {$from_sql} WHERE {$where_sql}";
+			$list_sql  = "SELECT p.*, cl.name AS client_name {$from_sql} WHERE {$where_sql} ORDER BY p.payment_date DESC, p.id DESC LIMIT %d OFFSET %d";
 		} elseif ( 'receives' === $section ) {
 			$table         = crm_table( 'warehouse_receives' );
 			$clients_table = crm_table( 'clients' );
@@ -489,20 +497,8 @@ class Companies_Controller extends CRM_Controller_Base {
 		$total_pages = $pagination['per_page'] > 0 ? (int) ceil( $total / $pagination['per_page'] ) : 1;
 
 		$filter_clients = array();
-		if ( 'receives' === $section ) {
-			$filter_clients = $wpdb->get_results(
-				$wpdb->prepare(
-					'SELECT DISTINCT cl.id, cl.name
-					FROM ' . crm_table( 'warehouse_receives' ) . ' r
-					INNER JOIN ' . crm_table( 'export_shipments' ) . ' s ON s.id = r.shipment_id
-					INNER JOIN ' . crm_table( 'orders' ) . ' o ON o.id = s.order_id
-					INNER JOIN ' . crm_table( 'clients' ) . ' cl ON cl.id = o.client_id
-					WHERE r.company_id = %d
-					ORDER BY cl.name ASC',
-					$company_id
-				),
-				ARRAY_A
-			);
+		if ( in_array( $section, array( 'receives', 'payments' ), true ) ) {
+			$filter_clients = self::get_company_clients( $company_id );
 		}
 
 		wp_send_json_success(
@@ -516,6 +512,65 @@ class Companies_Controller extends CRM_Controller_Base {
 				'filter_clients'  => $filter_clients ? $filter_clients : array(),
 			)
 		);
+	}
+
+	/**
+	 * Clients with warehouse receives for a supplier company.
+	 *
+	 * @param int $company_id Company ID.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function get_company_clients( $company_id ) {
+		global $wpdb;
+
+		$company_id = absint( $company_id );
+		if ( $company_id < 1 ) {
+			return array();
+		}
+
+		$receives_table = crm_table( 'warehouse_receives' );
+		$ship_table     = crm_table( 'export_shipments' );
+		$orders_table   = crm_table( 'orders' );
+		$clients_table  = crm_table( 'clients' );
+		$order_expr     = 'COALESCE(NULLIF(s.order_id, 0), NULLIF(r.order_id, 0))';
+
+		$clients = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT DISTINCT cl.id, cl.name, cl.phone
+				FROM {$receives_table} r
+				LEFT JOIN {$ship_table} s ON s.id = r.shipment_id
+				LEFT JOIN {$orders_table} o ON o.id = {$order_expr}
+				INNER JOIN {$clients_table} cl ON cl.id = o.client_id
+				WHERE r.company_id = %d AND o.client_id IS NOT NULL AND o.client_id > 0
+				ORDER BY cl.name ASC",
+				$company_id
+			),
+			ARRAY_A
+		);
+
+		return $clients ? $clients : array();
+	}
+
+	/**
+	 * Whether a client has receives under the given company.
+	 *
+	 * @param int $company_id Company ID.
+	 * @param int $client_id  Client ID.
+	 * @return bool
+	 */
+	public static function company_has_client( $company_id, $client_id ) {
+		$client_id = absint( $client_id );
+		if ( $client_id < 1 ) {
+			return true;
+		}
+
+		foreach ( self::get_company_clients( $company_id ) as $client ) {
+			if ( (int) $client['id'] === $client_id ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -535,6 +590,7 @@ class Companies_Controller extends CRM_Controller_Base {
 
 		$id            = isset( $_POST['id'] ) ? absint( $_POST['id'] ) : 0;
 		$company_id    = isset( $_POST['company_id'] ) ? absint( $_POST['company_id'] ) : 0;
+		$client_id     = isset( $_POST['client_id'] ) ? absint( $_POST['client_id'] ) : 0;
 		$payment_date  = isset( $_POST['payment_date'] ) ? crm_normalize_date( wp_unslash( $_POST['payment_date'] ) ) : '';
 		$amount        = isset( $_POST['amount'] ) ? crm_parse_amount( wp_unslash( $_POST['amount'] ) ) : 0;
 
@@ -542,9 +598,13 @@ class Companies_Controller extends CRM_Controller_Base {
 			wp_send_json_error( array( 'message' => __( 'Company, date, and amount are required.', 'ds-prod-import-crm' ) ) );
 		}
 
+		if ( $client_id > 0 && ! self::company_has_client( $company_id, $client_id ) ) {
+			wp_send_json_error( array( 'message' => __( 'Selected client is not linked to this company.', 'ds-prod-import-crm' ) ) );
+		}
+
 		$table = crm_table( 'company_payments' );
 		$data  = array(
-			'company_id'     => $company_id,
+			'client_id'      => $client_id > 0 ? $client_id : null,
 			'payment_date'   => $payment_date,
 			'amount'         => $amount,
 			'payment_method' => isset( $_POST['payment_method'] ) ? sanitize_text_field( wp_unslash( $_POST['payment_method'] ) ) : '',
@@ -587,6 +647,7 @@ class Companies_Controller extends CRM_Controller_Base {
 			array(
 				'payment_number' => $payment_number,
 				'company_id'     => $company_id,
+				'client_id'      => $client_id > 0 ? $client_id : null,
 				'payment_date'   => $payment_date,
 				'amount'         => $amount,
 				'payment_method' => $data['payment_method'],
@@ -595,7 +656,7 @@ class Companies_Controller extends CRM_Controller_Base {
 				'created_by'     => CRM_Audit::current_user_id(),
 				'created_at'     => current_time( 'mysql' ),
 			),
-			array( '%s', '%d', '%s', '%f', '%s', '%s', '%s', '%d', '%s' )
+			array( '%s', '%d', '%d', '%s', '%f', '%s', '%s', '%s', '%d', '%s' )
 		);
 
 		if ( ! $inserted ) {

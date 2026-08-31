@@ -12,6 +12,8 @@
 		formatAmount,
 		formatWeight,
 		parseWeight,
+		formatWeightInputValue,
+		wireWeightInputs,
 		sumWeights,
 		debounce,
 		formatTrackingTime,
@@ -77,6 +79,9 @@
 	const savePricesBtn = root.querySelector('.ds-crm-shipment-save-prices');
 	const acceptOrderBtn = root.querySelector('.ds-crm-shipment-accept-order');
 	const saveAcceptBtn = root.querySelector('.ds-crm-shipment-save-accept-order');
+	const approvalNoteField = root.querySelector('.ds-crm-shipment-approval-note-field');
+	const approvalNoteInput = root.querySelector('.ds-crm-shipment-approval-note');
+	const approvalNoteSaved = root.querySelector('.ds-crm-shipment-approval-note-saved');
 	const supplyLinesFoot = root.querySelector('.ds-crm-shipment-supply-foot');
 	const supplyGrandTotalEl = root.querySelector('.ds-crm-shipment-supply-grand-total');
 	const supplyValueEl = root.querySelector('.ds-crm-shipment-supply-value');
@@ -368,6 +373,7 @@
 				acceptOrderBtn.title = '';
 			}
 			syncReviewPricingHints();
+			syncApprovalNoteField();
 			return;
 		}
 
@@ -392,6 +398,28 @@
 		}
 
 		syncReviewPricingHints();
+		syncApprovalNoteField();
+	};
+
+	const syncApprovalNoteField = () => {
+		const showInput = Boolean(canAccept && reviewWorkflowBlocked);
+		if (approvalNoteField) {
+			approvalNoteField.hidden = !showInput;
+		}
+		if (approvalNoteInput && !showInput) {
+			approvalNoteInput.value = '';
+		}
+
+		const savedNote = (lastWorkspaceOrder?.approval_note || '').trim();
+		if (approvalNoteSaved) {
+			if (!reviewWorkflowBlocked && savedNote) {
+				approvalNoteSaved.hidden = false;
+				approvalNoteSaved.innerHTML = `<span class="ds-crm-meta-label">Approval note</span><p>${escapeHtml(savedNote)}</p>`;
+			} else {
+				approvalNoteSaved.hidden = true;
+				approvalNoteSaved.innerHTML = '';
+			}
+		}
 	};
 
 	const renderWorkspaceHeader = (data) => {
@@ -703,6 +731,7 @@
 	const renderReviewSection = (data, { editable = false } = {}) => {
 		const { order, items, workflow_blocked, needs_pricing, tracking } = data;
 		reviewWorkflowBlocked = Boolean(workflow_blocked);
+		lastWorkspaceOrder = order || null;
 
 		if (pageTitleEl) {
 			pageTitleEl.textContent = `Order ${order.order_number}`;
@@ -1050,7 +1079,10 @@
 			}
 		}
 
-		const acceptPayload = { id: workspaceOrderId };
+		const acceptPayload = {
+			id: workspaceOrderId,
+			approval_note: (approvalNoteInput?.value || '').trim(),
+		};
 		if (lockOrder) {
 			acceptPayload.items = JSON.stringify(collectApproveLines());
 		} else {
@@ -1315,12 +1347,13 @@
 				<td>
 					<input type="number" class="line-ship-qty ds-crm-qty-input" min="0" max="${max}" step="1" value="0" data-max="${max}" />
 				</td>
-				<td><input type="number" class="line-weight ds-crm-money-input" min="0" step="0.001" value="0" /></td>
+				<td><input type="number" class="line-weight ds-crm-money-input" min="0" step="0.01" value="0.00" /></td>
 			</tr>`;
 			})
 			.join('');
 
 		linesBody.querySelectorAll('tr[data-order-item-id]').forEach(wireLineRow);
+		wireWeightInputs(linesBody);
 		updateTotals();
 		if (lockOrder && !reviewWorkflowBlocked) {
 			syncSupplyShipperVisibility();
@@ -1554,6 +1587,128 @@
 		}
 	};
 
+	const missingStatusBadge = (status) => {
+		if (status === 'pending') {
+			return '<span class="ds-crm-badge ds-crm-badge-amend-pending">Pending approval</span>';
+		}
+		if (status === 'approved' || status === 'auto_approved') {
+			return '<span class="ds-crm-badge ds-crm-badge-shipment-received">Approved</span>';
+		}
+		if (status === 'declined') {
+			return '<span class="ds-crm-badge ds-crm-badge-muted">Declined</span>';
+		}
+		return escapeHtml(status || '—');
+	};
+
+	const renderMissingReportsBlock = (shipment) => {
+		const reports = shipment.missing_reports || [];
+		if (!reports.length) {
+			return '';
+		}
+
+		const pendingCount = reports.filter((report) => report.status === 'pending').length;
+		const cards = reports
+			.map((report) => {
+				const variant = [report.color, report.size].filter(Boolean).join(' / ') || '—';
+				const canReview = Boolean(report.can_review);
+				const isPending = report.status === 'pending';
+				const productHtml = DsCrmUI.productCell
+					? DsCrmUI.productCell(report.product_name, report.product_image_url, { size: 'sm' })
+					: escapeHtml(report.product_name || '—');
+
+				let reviewBlock = '';
+				if (isPending && canReview) {
+					reviewBlock = `
+						<div class="ds-crm-missing-report-review">
+							<label class="ds-crm-missing-report-review-label">Review note <span class="description">(optional)</span></label>
+							<textarea class="ds-crm-history-missing-review-notes" rows="2" placeholder="e.g. Confirmed lost in transit — restore qty for re-supply"></textarea>
+							<div class="ds-crm-missing-report-review-actions">
+								<button type="button" class="button button-primary ds-crm-history-missing-approve">Accept — restore qty</button>
+								<button type="button" class="button ds-crm-history-missing-decline">Decline</button>
+							</div>
+						</div>`;
+				} else if (isPending) {
+					reviewBlock = '<p class="ds-crm-missing-report-awaiting">Awaiting supervisor approval.</p>';
+				} else if (report.review_notes) {
+					reviewBlock = `<p class="ds-crm-missing-report-note"><strong>Review note:</strong> ${escapeHtml(report.review_notes)}</p>`;
+				}
+
+				const reasonLine = report.reason
+					? `<p class="ds-crm-missing-report-reason"><strong>Warehouse note:</strong> ${escapeHtml(report.reason)}</p>`
+					: '';
+
+				return `
+					<article class="ds-crm-missing-report-card ds-crm-missing-report-card--${escapeHtml(report.status || 'pending')}"
+						data-receive-item-id="${report.receive_item_id}">
+						<div class="ds-crm-missing-report-main">
+							<div class="ds-crm-missing-report-product">${productHtml}</div>
+							<div class="ds-crm-missing-report-stats">
+								<div class="ds-crm-missing-report-stat">
+									<span class="ds-crm-missing-report-stat-label">Variant</span>
+									<span class="ds-crm-missing-report-stat-value">${escapeHtml(variant)}</span>
+								</div>
+								<div class="ds-crm-missing-report-stat ds-crm-missing-report-stat--qty">
+									<span class="ds-crm-missing-report-stat-label">Missing</span>
+									<strong class="ds-crm-missing-report-qty">${report.missing_quantity}</strong>
+								</div>
+								<div class="ds-crm-missing-report-stat">
+									<span class="ds-crm-missing-report-stat-label">Status</span>
+									<span class="ds-crm-missing-report-stat-value">${missingStatusBadge(report.status)}</span>
+								</div>
+							</div>
+						</div>
+						<div class="ds-crm-missing-report-meta">
+							<span><strong>Receive:</strong> ${escapeHtml(report.receive_number || '—')}</span>
+							<span><strong>Reported by:</strong> ${escapeHtml(report.reported_by_name || 'Warehouse')}</span>
+							${report.reviewed_by_name ? `<span><strong>Reviewed by:</strong> ${escapeHtml(report.reviewed_by_name)}</span>` : ''}
+						</div>
+						${reasonLine}
+						${reviewBlock}
+					</article>`;
+			})
+			.join('');
+
+		return `
+			<div class="ds-crm-shipment-missing-block">
+				<div class="ds-crm-shipment-missing-block-head">
+					<div>
+						<h4 class="ds-crm-shipment-missing-title">Missing products (warehouse)</h4>
+						<p class="description">BD warehouse reported short qty. <strong>Accept</strong> restores product qty for China to supply again. <strong>Decline</strong> lets warehouse receive it later.</p>
+					</div>
+					${pendingCount > 0 ? `<span class="ds-crm-badge ds-crm-badge-amend-pending">${pendingCount} pending</span>` : ''}
+				</div>
+				<div class="ds-crm-missing-report-list">${cards}</div>
+			</div>`;
+	};
+
+	const reviewMissingReport = async (card, decision) => {
+		const receiveItemId = parseInt(card?.dataset.receiveItemId, 10) || 0;
+		if (!receiveItemId) {
+			return;
+		}
+		const label = decision === 'approved' ? 'accept' : 'decline';
+		if (!window.confirm(`Are you sure you want to ${label} this missing product report?`)) {
+			return;
+		}
+
+		const res = await postAjax('crm_shipments_missing_review', {
+			receive_item_id: receiveItemId,
+			decision,
+			review_notes: (card.querySelector('.ds-crm-history-missing-review-notes')?.value || '').trim(),
+		});
+
+		if (!res.success) {
+			DsCrmUI.toast(res.data?.message || 'Review failed.', 'error');
+			return;
+		}
+
+		DsCrmUI.toast(res.data?.message || 'Review saved.');
+		DsCrm.clearAjaxGetCache('crm_shipments_');
+		if (workspaceOrderId) {
+			await loadOrderLines(workspaceOrderId);
+		}
+	};
+
 	const renderSupplyHistory = (shipments = [], remaining = null) => {
 		if (!lockOrder) {
 			return;
@@ -1622,7 +1777,7 @@
 								<span class="ds-crm-cell-muted">was ${item.quantity} · 0 removes this product</span>
 							</td>`;
 							weightCell = `<td>
-								<input type="number" class="ds-crm-history-amend-weight" min="0" step="0.001" value="${Number(item.weight_kg) || 0}" aria-label="New weight kg" />
+								<input type="number" class="ds-crm-history-amend-weight" min="0" step="0.01" value="${formatWeightInputValue(item.weight_kg)}" aria-label="New weight kg" />
 							</td>`;
 							actionsCell = `<td class="ds-crm-actions ds-crm-history-product-actions">
 								<button type="button" class="button button-small button-primary ds-crm-btn-text ds-crm-history-amend-submit">Submit</button>
@@ -1687,12 +1842,13 @@
 					.join('');
 
 				return `
-				<article class="ds-crm-shipment-history-batch${s.has_pending_amendment ? ' is-amend-pending' : ''}${s.warehouse_locked ? ' is-warehouse-locked' : ''}" data-shipment-id="${shipmentId}">
+				<article class="ds-crm-shipment-history-batch${s.has_pending_amendment ? ' is-amend-pending' : ''}${s.has_pending_missing ? ' is-missing-pending' : ''}${s.warehouse_locked ? ' is-warehouse-locked' : ''}" data-shipment-id="${shipmentId}">
 					<div class="ds-crm-shipment-history-batch-head">
 						<div class="ds-crm-shipment-history-batch-title">
 							<strong>${escapeHtml(s.shipment_number || '—')}</strong>
 							<span class="ds-crm-badge ds-crm-badge-info">${escapeHtml(String(s.qty_total || 0))} pcs</span>
 							${s.has_pending_amendment ? '<span class="ds-crm-badge ds-crm-badge-amend-pending">Has pending product changes</span>' : ''}
+							${s.has_pending_missing ? '<span class="ds-crm-badge ds-crm-badge-amend-pending">Missing products awaiting approval</span>' : ''}
 							${s.warehouse_locked ? '<span class="ds-crm-badge ds-crm-badge-shipment-received">Received in warehouse</span>' : ''}
 						</div>
 						<div class="ds-crm-shipment-history-batch-meta">
@@ -1730,9 +1886,12 @@
 							</tfoot>` : ''}
 						</table>
 					</div>
+					${renderMissingReportsBlock(s)}
 				</article>`;
 			})
 			.join('');
+
+		wireWeightInputs(historyList);
 	};
 
 	const resetSupplyFormFields = () => {
@@ -1743,7 +1902,7 @@
 		});
 		form?.querySelectorAll('.line-weight').forEach((input) => {
 			if (!input.disabled) {
-				input.value = '0';
+				input.value = '0.00';
 			}
 		});
 		const notes = form?.querySelector('[name="notes"]');
@@ -1891,6 +2050,18 @@
 		const declineBtn = e.target.closest('.ds-crm-history-amend-decline');
 		if (declineBtn) {
 			await reviewProductAmend(declineBtn.closest('tr[data-shipment-item-id]'), 'declined');
+			return;
+		}
+
+		const missingApproveBtn = e.target.closest('.ds-crm-history-missing-approve');
+		if (missingApproveBtn) {
+			await reviewMissingReport(missingApproveBtn.closest('[data-receive-item-id]'), 'approved');
+			return;
+		}
+
+		const missingDeclineBtn = e.target.closest('.ds-crm-history-missing-decline');
+		if (missingDeclineBtn) {
+			await reviewMissingReport(missingDeclineBtn.closest('[data-receive-item-id]'), 'declined');
 		}
 	});
 

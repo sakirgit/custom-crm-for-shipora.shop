@@ -16,7 +16,7 @@ class CRM_Activator {
 	/**
 	 * Database schema version.
 	 */
-	const DB_VERSION = '0.11.0';
+	const DB_VERSION = '0.14.0';
 
 	/**
 	 * Create/upgrade plugin tables.
@@ -81,6 +81,7 @@ class CRM_Activator {
 				client_id INT NOT NULL,
 				order_date DATE NOT NULL,
 				notes TEXT,
+				approval_note TEXT,
 				status VARCHAR(50) NOT NULL DEFAULT 'pending',
 				created_by INT,
 				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -135,6 +136,10 @@ class CRM_Activator {
 				size VARCHAR(100),
 				quantity INT NOT NULL DEFAULT 0,
 				missing_quantity INT NOT NULL DEFAULT 0,
+				missing_status VARCHAR(20) NULL,
+				missing_review_notes TEXT NULL,
+				missing_reviewed_by INT NULL,
+				missing_reviewed_at DATETIME NULL,
 				weight_kg DECIMAL(10,3) DEFAULT 0,
 				rate DECIMAL(12,2) DEFAULT 0,
 				bill_amount DECIMAL(12,2) DEFAULT 0,
@@ -142,7 +147,8 @@ class CRM_Activator {
 				notes TEXT,
 				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 				INDEX idx_receive_id (receive_id),
-				INDEX idx_export_shipment_item_id (export_shipment_item_id)
+				INDEX idx_export_shipment_item_id (export_shipment_item_id),
+				INDEX idx_missing_status (missing_status)
 			) {$charset_collate};",
 			"CREATE TABLE {$prefix}stock (
 				id INT AUTO_INCREMENT PRIMARY KEY,
@@ -316,6 +322,7 @@ class CRM_Activator {
 				id INT AUTO_INCREMENT PRIMARY KEY,
 				payment_number VARCHAR(50) NOT NULL UNIQUE,
 				company_id INT NOT NULL,
+				client_id INT,
 				receive_id INT,
 				payment_date DATE NOT NULL,
 				amount DECIMAL(12,2) NOT NULL,
@@ -324,7 +331,8 @@ class CRM_Activator {
 				notes TEXT,
 				created_by INT,
 				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-				INDEX idx_company_id (company_id)
+				INDEX idx_company_id (company_id),
+				INDEX idx_client_id (client_id)
 			) {$charset_collate};",
 			"CREATE TABLE {$prefix}settings (
 				option_key VARCHAR(100) NOT NULL PRIMARY KEY,
@@ -428,6 +436,18 @@ class CRM_Activator {
 
 		if ( version_compare( $installed, '0.11.0', '<' ) ) {
 			self::upgrade_0110();
+		}
+
+		if ( version_compare( $installed, '0.12.0', '<' ) ) {
+			self::upgrade_0120();
+		}
+
+		if ( version_compare( $installed, '0.13.0', '<' ) ) {
+			self::upgrade_0130();
+		}
+
+		if ( version_compare( $installed, '0.14.0', '<' ) ) {
+			self::upgrade_0140();
 		}
 
 		if ( version_compare( $installed, self::DB_VERSION, '<' ) ) {
@@ -601,6 +621,7 @@ class CRM_Activator {
 				id INT AUTO_INCREMENT PRIMARY KEY,
 				payment_number VARCHAR(50) NOT NULL UNIQUE,
 				company_id INT NOT NULL,
+				client_id INT,
 				receive_id INT,
 				payment_date DATE NOT NULL,
 				amount DECIMAL(12,2) NOT NULL,
@@ -609,7 +630,8 @@ class CRM_Activator {
 				notes TEXT,
 				created_by INT,
 				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-				INDEX idx_company_id (company_id)
+				INDEX idx_company_id (company_id),
+				INDEX idx_client_id (client_id)
 			) {$charset_collate};"
 		);
 
@@ -1209,6 +1231,81 @@ class CRM_Activator {
 			);
 			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$wpdb->query( "ALTER TABLE {$payments_table} ADD INDEX idx_payment_purpose (payment_purpose)" );
+		}
+	}
+
+	/**
+	 * Optional client on supplier payments (per-client cargo attribution).
+	 *
+	 * @return void
+	 */
+	private static function upgrade_0120() {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'crm_company_payments';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$has = $wpdb->get_results( "SHOW COLUMNS FROM `{$table}` LIKE 'client_id'" );
+		if ( empty( $has ) ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query(
+				"ALTER TABLE {$table}
+				ADD COLUMN client_id INT NULL DEFAULT NULL AFTER company_id"
+			);
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query( "ALTER TABLE {$table} ADD INDEX idx_client_id (client_id)" );
+		}
+	}
+
+	/**
+	 * Missing-product approval workflow on warehouse receive lines.
+	 *
+	 * @return void
+	 */
+	private static function upgrade_0130() {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'crm_receive_items';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$has = $wpdb->get_results( "SHOW COLUMNS FROM `{$table}` LIKE 'missing_status'" );
+		if ( empty( $has ) ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query(
+				"ALTER TABLE {$table}
+				ADD COLUMN missing_status VARCHAR(20) NULL DEFAULT NULL AFTER missing_quantity,
+				ADD COLUMN missing_review_notes TEXT NULL AFTER missing_status,
+				ADD COLUMN missing_reviewed_by INT NULL AFTER missing_review_notes,
+				ADD COLUMN missing_reviewed_at DATETIME NULL AFTER missing_reviewed_by"
+			);
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query( "ALTER TABLE {$table} ADD INDEX idx_missing_status (missing_status)" );
+		}
+
+		// Legacy missing rows were already counted toward shipment progress.
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			"UPDATE {$table}
+			SET missing_status = 'approved'
+			WHERE missing_quantity > 0 AND (missing_status IS NULL OR missing_status = '')"
+		);
+	}
+
+	/**
+	 * Optional note saved when China office / admin approves an order.
+	 *
+	 * @return void
+	 */
+	private static function upgrade_0140() {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'crm_orders';
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$has = $wpdb->get_results( "SHOW COLUMNS FROM `{$table}` LIKE 'approval_note'" );
+		if ( empty( $has ) ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query( "ALTER TABLE {$table} ADD COLUMN approval_note TEXT NULL AFTER notes" );
 		}
 	}
 }

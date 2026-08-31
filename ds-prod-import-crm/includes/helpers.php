@@ -768,6 +768,7 @@ function crm_get_settings() {
 		'china_timezone'          => 'Asia/Shanghai',
 		'bangladesh_timezone'     => 'Asia/Dhaka',
 		'tracking_show_dual_tz'   => 1,
+		'missing_auto_approve'      => 0,
 	);
 
 	$stored = get_option( 'ds_crm_settings', array() );
@@ -1297,6 +1298,15 @@ function crm_receive_form_url( $shipment_id = 0 ) {
 }
 
 /**
+ * Whether warehouse missing reports are auto-approved (no supervisor step).
+ *
+ * @return bool
+ */
+function crm_missing_auto_approve_enabled() {
+	return ! empty( crm_get_settings()['missing_auto_approve'] );
+}
+
+/**
  * Quantity already received into stock for an export shipment line.
  *
  * @param int $export_shipment_item_id Export shipment item ID.
@@ -1319,7 +1329,7 @@ function crm_shipment_item_qty_received( $export_shipment_item_id ) {
 }
 
 /**
- * Quantity marked missing for an export shipment line.
+ * Quantity marked missing (approved) for an export shipment line.
  *
  * @param int $export_shipment_item_id Export shipment item ID.
  * @return int
@@ -1334,10 +1344,49 @@ function crm_shipment_item_qty_missing( $export_shipment_item_id ) {
 
 	return (int) $wpdb->get_var(
 		$wpdb->prepare(
-			'SELECT COALESCE(SUM(missing_quantity), 0) FROM ' . crm_table( 'receive_items' ) . ' WHERE export_shipment_item_id = %d',
+			"SELECT COALESCE(SUM(missing_quantity), 0) FROM " . crm_table( 'receive_items' ) . "
+			WHERE export_shipment_item_id = %d
+			AND missing_quantity > 0
+			AND missing_status IN ('approved', 'auto_approved')",
 			$export_shipment_item_id
 		)
 	);
+}
+
+/**
+ * Quantity reported missing and awaiting supervisor approval.
+ *
+ * @param int $export_shipment_item_id Export shipment item ID.
+ * @return int
+ */
+function crm_shipment_item_qty_pending_missing( $export_shipment_item_id ) {
+	global $wpdb;
+
+	$export_shipment_item_id = absint( $export_shipment_item_id );
+	if ( $export_shipment_item_id < 1 ) {
+		return 0;
+	}
+
+	return (int) $wpdb->get_var(
+		$wpdb->prepare(
+			"SELECT COALESCE(SUM(missing_quantity), 0) FROM " . crm_table( 'receive_items' ) . "
+			WHERE export_shipment_item_id = %d
+			AND missing_quantity > 0
+			AND missing_status = 'pending'",
+			$export_shipment_item_id
+		)
+	);
+}
+
+/**
+ * Missing qty that reserves shipment remaining (pending + approved).
+ *
+ * @param int $export_shipment_item_id Export shipment item ID.
+ * @return int
+ */
+function crm_shipment_item_qty_missing_held( $export_shipment_item_id ) {
+	return crm_shipment_item_qty_missing( $export_shipment_item_id )
+		+ crm_shipment_item_qty_pending_missing( $export_shipment_item_id );
 }
 
 /**
@@ -1345,7 +1394,7 @@ function crm_shipment_item_qty_missing( $export_shipment_item_id ) {
  *
  * @param int $shipped   Qty on the shipment line.
  * @param int $received  Qty already received into stock.
- * @param int $missing   Qty already marked missing.
+ * @param int $missing   Qty missing (held: pending + approved). Optional — computed when 0.
  * @return int
  */
 function crm_shipment_item_qty_remaining( $shipped, $received = 0, $missing = 0 ) {
@@ -1356,19 +1405,20 @@ function crm_shipment_item_qty_remaining( $shipped, $received = 0, $missing = 0 
  * Aggregate receive progress for a China export shipment.
  *
  * @param int $shipment_id Export shipment ID.
- * @return array{qty_shipped:int,qty_received:int,qty_missing:int,qty_remaining:int,line_count:int,lines_pending:int}
+ * @return array{qty_shipped:int,qty_received:int,qty_missing:int,qty_pending_missing:int,qty_remaining:int,line_count:int,lines_pending:int}
  */
 function crm_shipment_receive_progress( $shipment_id ) {
 	global $wpdb;
 
 	$shipment_id = absint( $shipment_id );
 	$empty       = array(
-		'qty_shipped'   => 0,
-		'qty_received'  => 0,
-		'qty_missing'   => 0,
-		'qty_remaining' => 0,
-		'line_count'    => 0,
-		'lines_pending' => 0,
+		'qty_shipped'          => 0,
+		'qty_received'         => 0,
+		'qty_missing'          => 0,
+		'qty_pending_missing'  => 0,
+		'qty_remaining'        => 0,
+		'line_count'           => 0,
+		'lines_pending'        => 0,
 	);
 
 	if ( $shipment_id < 1 ) {
@@ -1387,22 +1437,26 @@ function crm_shipment_receive_progress( $shipment_id ) {
 		return $empty;
 	}
 
-	$qty_shipped   = 0;
-	$qty_received  = 0;
-	$qty_missing   = 0;
-	$qty_remaining = 0;
-	$lines_pending = 0;
+	$qty_shipped          = 0;
+	$qty_received         = 0;
+	$qty_missing          = 0;
+	$qty_pending_missing  = 0;
+	$qty_remaining        = 0;
+	$lines_pending        = 0;
 
 	foreach ( $items as $item ) {
 		$shipped   = (int) $item['quantity'];
 		$received  = crm_shipment_item_qty_received( (int) $item['id'] );
 		$missing   = crm_shipment_item_qty_missing( (int) $item['id'] );
-		$remaining = crm_shipment_item_qty_remaining( $shipped, $received, $missing );
+		$pending   = crm_shipment_item_qty_pending_missing( (int) $item['id'] );
+		$held      = $missing + $pending;
+		$remaining = crm_shipment_item_qty_remaining( $shipped, $received, $held );
 
-		$qty_shipped  += $shipped;
-		$qty_received += $received;
-		$qty_missing  += $missing;
-		$qty_remaining += $remaining;
+		$qty_shipped         += $shipped;
+		$qty_received        += $received;
+		$qty_missing         += $missing;
+		$qty_pending_missing += $pending;
+		$qty_remaining       += $remaining;
 
 		if ( $remaining > 0 ) {
 			++$lines_pending;
@@ -1410,12 +1464,13 @@ function crm_shipment_receive_progress( $shipment_id ) {
 	}
 
 	return array(
-		'qty_shipped'   => $qty_shipped,
-		'qty_received'  => $qty_received,
-		'qty_missing'   => $qty_missing,
-		'qty_remaining' => $qty_remaining,
-		'line_count'    => count( $items ),
-		'lines_pending' => $lines_pending,
+		'qty_shipped'         => $qty_shipped,
+		'qty_received'        => $qty_received,
+		'qty_missing'         => $qty_missing,
+		'qty_pending_missing' => $qty_pending_missing,
+		'qty_remaining'       => $qty_remaining,
+		'line_count'          => count( $items ),
+		'lines_pending'       => $lines_pending,
 	);
 }
 

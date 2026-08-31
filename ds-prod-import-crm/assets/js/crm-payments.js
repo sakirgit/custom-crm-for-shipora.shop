@@ -14,7 +14,7 @@
 	const showSuppliers = root.dataset.showSuppliers === '1';
 	const canRecordSupplier = root.dataset.canRecordSupplier === '1';
 	const colCount = isClient ? 7 : 9;
-	const supplierColCount = 8;
+	const supplierColCount = 9;
 	const clientsPanel = root.querySelector('.ds-crm-payments-clients');
 	const suppliersPanel = root.querySelector('.ds-crm-payments-suppliers');
 	const addClientBtn = root.querySelector('.ds-crm-btn-add-payment');
@@ -48,7 +48,9 @@
 	const supplierNextBtn = suppliersPanel?.querySelector('.ds-crm-page-next');
 	const supplierErrorBox = supplierForm?.querySelector('.ds-crm-form-error');
 	const companyFilter = suppliersPanel?.querySelector('.ds-crm-filter-company');
+	const supplierClientFilter = suppliersPanel?.querySelector('.ds-crm-filter-supplier-client');
 	const companySelect = supplierForm?.querySelector('[name="company_id"]');
+	const supplierClientSelect = supplierForm?.querySelector('[name="client_id"]');
 	const supplierPreviewWrap = supplierForm?.querySelector('.ds-crm-payment-supplier-preview');
 	const supplierPreviewInner = supplierForm?.querySelector('.ds-crm-payment-supplier-preview-inner');
 	const supplierAmountInput = supplierForm?.querySelector('[name="amount"]');
@@ -74,6 +76,7 @@
 		perPage: 10,
 		search: '',
 		companyId: presetCompanyId || '',
+		clientId: '',
 		dateFrom: '',
 		dateTo: '',
 		period: '',
@@ -482,6 +485,51 @@
 		}
 	};
 
+	const populateSupplierClientOptions = (clients, selectEl, { includeGeneral = true } = {}) => {
+		if (!selectEl) {
+			return;
+		}
+
+		const current = selectEl.value;
+		const emptyLabel =
+			selectEl === supplierClientFilter
+				? 'All clients'
+				: 'General — all clients / company bill';
+
+		selectEl.innerHTML = includeGeneral ? `<option value="">${emptyLabel}</option>` : '';
+		(clients || []).forEach((client) => {
+			const opt = document.createElement('option');
+			opt.value = String(client.id);
+			opt.textContent = client.phone ? `${client.name} (${client.phone})` : client.name;
+			selectEl.appendChild(opt);
+		});
+
+		if (current && [...selectEl.options].some((opt) => opt.value === String(current))) {
+			selectEl.value = String(current);
+		} else {
+			selectEl.value = '';
+		}
+	};
+
+	const syncSupplierClientFilter = (clients) => {
+		if (!supplierClientFilter) {
+			return;
+		}
+
+		const hasCompany = Boolean(supplierState.companyId);
+		supplierClientFilter.hidden = !hasCompany;
+		if (!hasCompany) {
+			supplierState.clientId = '';
+			supplierClientFilter.value = '';
+			return;
+		}
+
+		populateSupplierClientOptions(clients || [], supplierClientFilter);
+		if (supplierState.clientId) {
+			supplierClientFilter.value = String(supplierState.clientId);
+		}
+	};
+
 	const populateOrderOptions = (orders, selectedId = '') => {
 		if (!orderSelect) {
 			return;
@@ -560,7 +608,7 @@
 		}
 	};
 
-	const renderSupplierPreview = (company, summary) => {
+	const renderSupplierPreview = (company, summary, client, clientSummary) => {
 		if (!supplierPreviewWrap || !supplierPreviewInner) {
 			return;
 		}
@@ -569,6 +617,23 @@
 		const ledgerHref = buildModuleUrl('companies', { company_action: 'ledger', company_id: company.id });
 		const stat = (label, value, mod = '') =>
 			`<div class="ds-crm-stat-card ${mod}"><span class="ds-crm-stat-label">${label}</span><span class="ds-crm-stat-value">${value}</span></div>`;
+
+		let clientBlock = '';
+		if (client && clientSummary) {
+			const clientDueClass = clientSummary.total_due > 0 ? 'ds-crm-stat-card--due' : 'ds-crm-stat-card--ok';
+			clientBlock = `
+				<div class="ds-crm-payment-order-preview-head ds-crm-payment-client-preview-head">
+					<strong>${escapeHtml(client.name)}</strong>
+					${client.phone ? `<span class="description">${escapeHtml(client.phone)}</span>` : ''}
+				</div>
+				<div class="ds-crm-order-stats ds-crm-order-stats--compact">
+					${stat('Client shipping bill', formatAmount(clientSummary.shipping_bill))}
+					${stat('Paid (this client)', formatAmount(clientSummary.total_paid))}
+					${stat('Client due', formatAmount(clientSummary.total_due), clientDueClass)}
+				</div>
+				<p class="description">Client due is this client’s warehouse shipping for this company minus payments tagged to them. Company totals above include all clients and manual bills.</p>
+			`;
+		}
 
 		supplierPreviewInner.innerHTML = `
 			<div class="ds-crm-payment-order-preview-head">
@@ -580,14 +645,16 @@
 				${stat('Paid', formatAmount(summary.total_paid))}
 				${stat('Due', formatAmount(summary.total_due), dueClass)}
 			</div>
+			${clientBlock}
 			<p class="description"><a href="${ledgerHref}">Open full company ledger</a></p>
 		`;
 		supplierPreviewWrap.hidden = false;
 	};
 
-	const loadSupplierPreview = async (companyId, { suggestAmount = false } = {}) => {
+	const loadSupplierPreview = async (companyId, { clientId = 0, suggestAmount = false } = {}) => {
 		if (!companyId) {
 			clearSupplierPreview();
+			populateSupplierClientOptions([], supplierClientSelect);
 			return;
 		}
 
@@ -596,17 +663,27 @@
 			supplierPreviewWrap.hidden = false;
 		}
 
-		const result = await postAjax('crm_payments_supplier_preview', { company_id: companyId });
+		const payload = { company_id: companyId };
+		if (clientId) {
+			payload.client_id = clientId;
+		}
+
+		const result = await postAjax('crm_payments_supplier_preview', payload);
 		if (!result.success) {
 			clearSupplierPreview();
 			return;
 		}
 
-		const { company, summary } = result.data;
-		renderSupplierPreview(company, summary);
+		const { company, summary, clients, client, client_summary: clientSummary } = result.data;
+		populateSupplierClientOptions(clients || [], supplierClientSelect);
+		if (clientId) {
+			supplierClientSelect.value = String(clientId);
+		}
+		renderSupplierPreview(company, summary, client, clientSummary);
 
-		if (suggestAmount && supplierAmountInput && summary.total_due > 0) {
-			supplierAmountInput.value = parseFloat(summary.total_due).toFixed(2);
+		const suggestSummary = clientSummary && clientId ? clientSummary : summary;
+		if (suggestAmount && supplierAmountInput && suggestSummary.total_due > 0) {
+			supplierAmountInput.value = parseFloat(suggestSummary.total_due).toFixed(2);
 			lastSuggestedSupplierAmount = supplierAmountInput.value;
 		}
 	};
@@ -742,6 +819,7 @@
 			<tr>
 				<td>${escapeHtml(item.payment_number || '—')}</td>
 				<td><a href="${ledgerHref}">${escapeHtml(item.company_name || '—')}</a></td>
+				<td>${escapeHtml(item.client_name || '—')}</td>
 				<td class="ds-crm-datetime">${formatListDateTime(item, 'payment_date')}</td>
 				<td class="ds-crm-amount-cell">${formatAmount(item.amount)}</td>
 				<td>${escapeHtml(formatMethod(item.payment_method))}</td>
@@ -764,6 +842,7 @@
 			per_page: supplierState.perPage,
 			search: supplierState.search,
 			company_id: supplierState.companyId,
+			client_id: supplierState.clientId,
 			date_from: supplierState.period ? '' : supplierState.dateFrom,
 			date_to: supplierState.period ? '' : supplierState.dateTo,
 			period: supplierState.period || 'all',
@@ -773,6 +852,8 @@
 			supplierTbody.innerHTML = `<tr><td colspan="${supplierColCount}">${escapeHtml(result.data?.message || 'Failed to load.')}</td></tr>`;
 			return;
 		}
+
+		syncSupplierClientFilter(result.data.filter_clients || []);
 
 		renderSupplierRows(result.data.items || []);
 		supplierSummary = result.data.summary || [];
@@ -959,6 +1040,7 @@
 		document.getElementById('ds-crm-supplier-payment-modal-title').textContent = 'Record payment to supplier';
 		await ensureCompanies();
 		clearSupplierPreview();
+		populateSupplierClientOptions([], supplierClientSelect);
 		const today = new Date().toISOString().slice(0, 10);
 		supplierForm.querySelector('[name="payment_date"]').value = today;
 		lastSuggestedSupplierAmount = null;
@@ -986,6 +1068,7 @@
 				supplierForm.querySelector('[name="id"]').value = String(id);
 				document.getElementById('ds-crm-supplier-payment-modal-title').textContent = 'Edit supplier payment';
 				companySelect.value = String(item.company_id);
+				const clientId = parseInt(item.client_id, 10) || 0;
 				supplierForm.querySelector('[name="payment_date"]').value = item.payment_date || '';
 				supplierForm.querySelector('[name="amount"]').value = item.amount || '';
 				const methodSelect = supplierForm.querySelector('[name="payment_method"]');
@@ -999,7 +1082,7 @@
 				methodSelect.value = methodValue;
 				supplierForm.querySelector('[name="reference"]').value = item.reference || '';
 				supplierForm.querySelector('[name="notes"]').value = item.notes || '';
-				await loadSupplierPreview(item.company_id);
+				await loadSupplierPreview(item.company_id, { clientId });
 			} finally {
 				DsCrmUI.hideModalLoading(supplierModal);
 				DsCrmUI.setButtonLoading(trigger, false);
@@ -1028,6 +1111,7 @@
 		setFormError(supplierErrorBox, '');
 
 		const companyId = parseInt(companySelect.value, 10);
+		const clientId = parseInt(supplierClientSelect?.value, 10) || 0;
 		const paymentDate = supplierForm.querySelector('[name="payment_date"]').value;
 		const amount = parseFloat(supplierForm.querySelector('[name="amount"]').value);
 
@@ -1039,6 +1123,7 @@
 		const result = await postAjax('crm_payments_supplier_save', {
 			id: supplierForm.querySelector('[name="id"]').value,
 			company_id: companyId,
+			client_id: clientId,
 			payment_date: paymentDate,
 			amount,
 			payment_method: supplierForm.querySelector('[name="payment_method"]').value,
@@ -1191,6 +1276,16 @@
 
 	companyFilter?.addEventListener('change', (e) => {
 		supplierState.companyId = e.target.value;
+		supplierState.clientId = '';
+		if (supplierClientFilter) {
+			supplierClientFilter.value = '';
+		}
+		supplierState.page = 1;
+		loadSupplierList();
+	});
+
+	supplierClientFilter?.addEventListener('change', (e) => {
+		supplierState.clientId = e.target.value;
 		supplierState.page = 1;
 		loadSupplierList();
 	});
@@ -1232,6 +1327,9 @@
 	companySelect?.addEventListener('change', (e) => {
 		const companyId = parseInt(e.target.value, 10) || 0;
 		const suggestAmount = !supplierForm.querySelector('[name="id"]').value;
+		if (supplierClientSelect) {
+			supplierClientSelect.value = '';
+		}
 		if (
 			suggestAmount &&
 			supplierAmountInput?.value &&
@@ -1242,6 +1340,22 @@
 			return;
 		}
 		loadSupplierPreview(companyId, { suggestAmount });
+	});
+
+	supplierClientSelect?.addEventListener('change', (e) => {
+		const companyId = parseInt(companySelect?.value, 10) || 0;
+		const clientId = parseInt(e.target.value, 10) || 0;
+		const suggestAmount = !supplierForm.querySelector('[name="id"]').value;
+		if (
+			suggestAmount &&
+			supplierAmountInput?.value &&
+			lastSuggestedSupplierAmount &&
+			supplierAmountInput.value !== lastSuggestedSupplierAmount
+		) {
+			loadSupplierPreview(companyId, { clientId });
+			return;
+		}
+		loadSupplierPreview(companyId, { clientId, suggestAmount });
 	});
 
 	supplierTbody?.addEventListener('click', (e) => {

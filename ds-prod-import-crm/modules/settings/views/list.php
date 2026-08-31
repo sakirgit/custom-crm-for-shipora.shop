@@ -232,6 +232,16 @@ $crm_admin_section = isset( $crm_admin_section ) ? sanitize_key( $crm_admin_sect
 							</label>
 						</div>
 					</div>
+					<div class="ds-crm-field-row">
+						<span class="ds-crm-field-label"><?php esc_html_e( 'Warehouse missing products', 'ds-prod-import-crm' ); ?></span>
+						<div class="ds-crm-field-control">
+							<label>
+								<input type="checkbox" name="missing_auto_approve" value="1" />
+								<?php esc_html_e( 'Auto-approve missing qty reported at warehouse receive (skip admin review in Supply history)', 'ds-prod-import-crm' ); ?>
+							</label>
+							<p class="description"><?php esc_html_e( 'When off, each missing product line waits for admin accept/decline on the order Supply history page before qty is restored for China to re-supply.', 'ds-prod-import-crm' ); ?></p>
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>

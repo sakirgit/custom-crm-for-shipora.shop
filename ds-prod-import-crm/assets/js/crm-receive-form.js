@@ -6,7 +6,7 @@
 		return;
 	}
 
-	const { postAjax, formatAmount, formatWeight, parseWeight, sumWeights, DsCrmUI, wireProductPicker, buildModuleUrl } = DsCrm;
+	const { postAjax, formatAmount, formatWeight, parseWeight, formatWeightInputValue, wireWeightInputs, sumWeights, DsCrmUI, wireProductPicker, buildModuleUrl } = DsCrm;
 	const receiveForm = root.querySelector('.ds-crm-receive-form');
 	const linesBody = receiveForm?.querySelector('.ds-crm-receive-lines tbody');
 	const companySelect = receiveForm?.querySelector('select[name="company_id"]');
@@ -136,12 +136,12 @@
 			weightInput.disabled = !needsWeight;
 			weightInput.required = needsWeight;
 			if (!needsWeight) {
-				weightInput.value = '0';
+				weightInput.value = '0.00';
 			} else if ((parseFloat(weightInput.value) || 0) <= 0) {
 				const suggested = parseFloat(row.dataset.weightSuggested || '0') || 0;
 				if (suggested > 0) {
 					const ratio = remaining > 0 ? qty / remaining : 0;
-					weightInput.value = (suggested * ratio).toFixed(3);
+					weightInput.value = formatWeightInputValue(suggested * ratio);
 				}
 			}
 		}
@@ -188,7 +188,7 @@
 			<td><strong>${escapeHtml(String(remaining))}</strong></td>
 			<td><input type="number" class="line-qty ds-crm-qty-input" min="0" max="${remaining}" step="1" value="${remaining > 0 ? remaining : 0}" ${remaining < 1 ? 'disabled' : ''} /></td>
 			<td><input type="number" class="line-missing ds-crm-qty-input" min="0" max="${remaining}" step="1" value="0" ${remaining < 1 ? 'disabled' : ''} /></td>
-			<td><input type="number" class="line-weight ds-crm-money-input" min="0" step="0.01" value="${remaining > 0 ? Number(item.weight_kg_suggested || 0).toFixed(3) : '0'}" /></td>
+			<td><input type="number" class="line-weight ds-crm-money-input" min="0" step="0.01" value="${remaining > 0 ? formatWeightInputValue(item.weight_kg_suggested || 0) : '0.00'}" /></td>
 			<td><input type="number" class="line-shipping-rate ds-crm-money-input" min="0" step="0.01" value="0" /></td>
 			<td class="ds-crm-line-shipping-bill"><span class="line-shipping-bill">৳0.00</span></td>
 		`;
@@ -221,7 +221,7 @@
 			<td><input type="text" class="line-color" placeholder="Color" /></td>
 			<td><input type="text" class="line-size" placeholder="Size" /></td>
 			<td><input type="number" class="line-qty ds-crm-qty-input" min="1" step="1" value="1" /></td>
-			<td><input type="number" class="line-weight ds-crm-money-input" min="0" step="0.01" value="0" required /></td>
+			<td><input type="number" class="line-weight ds-crm-money-input" min="0" step="0.01" value="0.00" required /></td>
 			<td><input type="number" class="line-shipping-rate ds-crm-money-input" min="0" step="0.01" value="${defaultRate > 0 ? defaultRate.toFixed(2) : '0'}" required /></td>
 			<td class="ds-crm-line-shipping-bill"><span class="line-shipping-bill">৳0.00</span></td>
 			<td><button type="button" class="button button-small ds-crm-remove-line" aria-label="Remove line">×</button></td>
@@ -426,6 +426,7 @@
 		(result.data.items || []).forEach((item) => {
 			linesBody.appendChild(createShipmentLineRow(item));
 		});
+		wireWeightInputs(linesBody);
 		updateTotals();
 	};
 

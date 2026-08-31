@@ -535,10 +535,12 @@ class Payments_Controller extends CRM_Controller_Base {
 
 		$table           = crm_table( 'company_payments' );
 		$companies_table = crm_table( 'companies' );
+		$clients_table   = crm_table( 'clients' );
 		$pagination      = self::pagination_from_request();
 		$dates           = self::date_range_from_request();
 		$search     = isset( $_POST['search'] ) ? sanitize_text_field( wp_unslash( $_POST['search'] ) ) : '';
 		$company_id = isset( $_POST['company_id'] ) ? absint( $_POST['company_id'] ) : 0;
+		$client_id  = isset( $_POST['client_id'] ) ? absint( $_POST['client_id'] ) : 0;
 		$period     = isset( $_POST['period'] ) ? sanitize_key( wp_unslash( $_POST['period'] ) ) : '';
 		if ( ! in_array( $period, array( 'today', 'week', 'month' ), true ) ) {
 			$period = '';
@@ -549,7 +551,8 @@ class Payments_Controller extends CRM_Controller_Base {
 
 		if ( $search ) {
 			$like     = '%' . $wpdb->esc_like( $search ) . '%';
-			$where[]  = '(p.payment_number LIKE %s OR c.name LIKE %s OR p.reference LIKE %s OR p.payment_method LIKE %s OR p.notes LIKE %s)';
+			$where[]  = '(p.payment_number LIKE %s OR c.name LIKE %s OR cl.name LIKE %s OR p.reference LIKE %s OR p.payment_method LIKE %s OR p.notes LIKE %s)';
+			$params[] = $like;
 			$params[] = $like;
 			$params[] = $like;
 			$params[] = $like;
@@ -560,6 +563,11 @@ class Payments_Controller extends CRM_Controller_Base {
 		if ( $company_id ) {
 			$where[]  = 'p.company_id = %d';
 			$params[] = $company_id;
+		}
+
+		if ( $client_id ) {
+			$where[]  = 'p.client_id = %d';
+			$params[] = $client_id;
 		}
 
 		$base_sql    = implode( ' AND ', $where );
@@ -587,6 +595,7 @@ class Payments_Controller extends CRM_Controller_Base {
 
 		$count_sql = "SELECT COUNT(*) FROM {$table} p
 			LEFT JOIN {$companies_table} c ON c.id = p.company_id
+			LEFT JOIN {$clients_table} cl ON cl.id = p.client_id
 			WHERE {$where_sql}";
 
 		if ( ! empty( $params ) ) {
@@ -595,9 +604,10 @@ class Payments_Controller extends CRM_Controller_Base {
 			$total = (int) $wpdb->get_var( $count_sql );
 		}
 
-		$list_sql = "SELECT p.*, c.name AS company_name, c.company_type, c.phone AS company_phone
+		$list_sql = "SELECT p.*, c.name AS company_name, c.company_type, c.phone AS company_phone, cl.name AS client_name
 			FROM {$table} p
 			LEFT JOIN {$companies_table} c ON c.id = p.company_id
+			LEFT JOIN {$clients_table} cl ON cl.id = p.client_id
 			WHERE {$where_sql}
 			ORDER BY p.payment_date DESC, p.id DESC
 			LIMIT %d OFFSET %d";
@@ -606,14 +616,20 @@ class Payments_Controller extends CRM_Controller_Base {
 		$items       = $wpdb->get_results( $wpdb->prepare( $list_sql, $list_params ), ARRAY_A );
 		$total_pages = $pagination['per_page'] > 0 ? (int) ceil( $total / $pagination['per_page'] ) : 1;
 
+		$filter_clients = array();
+		if ( $company_id > 0 ) {
+			$filter_clients = Companies_Controller::get_company_clients( $company_id );
+		}
+
 		wp_send_json_success(
 			array(
-				'items'       => $items ? $items : array(),
-				'total'       => $total,
-				'page'        => $pagination['page'],
-				'per_page'    => $pagination['per_page'],
-				'total_pages' => max( 1, $total_pages ),
-				'summary'     => CRM_Module_Summary::supplier_payments( $where_sql, $params, $base_sql, $base_params, $company_id ),
+				'items'          => $items ? $items : array(),
+				'total'          => $total,
+				'page'           => $pagination['page'],
+				'per_page'       => $pagination['per_page'],
+				'total_pages'    => max( 1, $total_pages ),
+				'summary'        => CRM_Module_Summary::supplier_payments( $where_sql, $params, $base_sql, $base_params, $company_id ),
+				'filter_clients' => $filter_clients,
 			)
 		);
 	}
@@ -651,6 +667,7 @@ class Payments_Controller extends CRM_Controller_Base {
 		global $wpdb;
 
 		$company_id = isset( $_POST['company_id'] ) ? absint( $_POST['company_id'] ) : 0;
+		$client_id  = isset( $_POST['client_id'] ) ? absint( $_POST['client_id'] ) : 0;
 		if ( $company_id < 1 ) {
 			wp_send_json_error( array( 'message' => __( 'Invalid company ID.', 'ds-prod-import-crm' ) ) );
 		}
@@ -667,12 +684,29 @@ class Payments_Controller extends CRM_Controller_Base {
 			wp_send_json_error( array( 'message' => __( 'Company not found.', 'ds-prod-import-crm' ) ) );
 		}
 
-		wp_send_json_success(
-			array(
-				'company' => $company,
-				'summary' => CRM_Ledger::get_company_summary( $company_id ),
-			)
+		$clients = Companies_Controller::get_company_clients( $company_id );
+		$payload = array(
+			'company' => $company,
+			'summary' => CRM_Ledger::get_company_summary( $company_id ),
+			'clients' => $clients,
 		);
+
+		if ( $client_id > 0 ) {
+			if ( ! Companies_Controller::company_has_client( $company_id, $client_id ) ) {
+				wp_send_json_error( array( 'message' => __( 'Selected client is not linked to this company.', 'ds-prod-import-crm' ) ) );
+			}
+
+			foreach ( $clients as $client_row ) {
+				if ( (int) $client_row['id'] === $client_id ) {
+					$payload['client'] = $client_row;
+					break;
+				}
+			}
+
+			$payload['client_summary'] = CRM_Ledger::get_company_client_summary( $company_id, $client_id );
+		}
+
+		wp_send_json_success( $payload );
 	}
 
 	/**

@@ -333,17 +333,21 @@ class Orders_Controller extends CRM_Controller_Base {
 
 		$now     = current_time( 'mysql' );
 		$user_id = CRM_Audit::current_user_id();
+		$approval_note = isset( $_POST['approval_note'] )
+			? sanitize_textarea_field( wp_unslash( $_POST['approval_note'] ) )
+			: '';
 
 		$wpdb->update(
 			crm_table( 'orders' ),
 			array(
-				'accepted_at' => $now,
-				'accepted_by' => $user_id,
-				'updated_by'  => $user_id,
-				'updated_at'  => $now,
+				'accepted_at'    => $now,
+				'accepted_by'    => $user_id,
+				'approval_note'  => $approval_note,
+				'updated_by'     => $user_id,
+				'updated_at'     => $now,
 			),
 			array( 'id' => $id ),
-			array( '%s', '%d', '%d', '%s' ),
+			array( '%s', '%d', '%s', '%d', '%s' ),
 			array( '%d' )
 		);
 
@@ -360,7 +364,10 @@ class Orders_Controller extends CRM_Controller_Base {
 			'orders',
 			$id,
 			sprintf( 'Approved order %s (accepted qty set)', $order['order_number'] ),
-			array( 'changes' => $changes )
+			array(
+				'changes'        => $changes,
+				'approval_note'  => $approval_note,
+			)
 		);
 
 		wp_send_json_success(

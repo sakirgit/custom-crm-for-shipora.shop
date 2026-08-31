@@ -354,8 +354,12 @@
 			meta.notes && order.notes
 				? `<div class="ds-crm-order-notes"><span class="ds-crm-meta-label">Notes</span><p>${escapeHtml(order.notes)}</p></div>`
 				: '';
+		const approvalNoteBlock =
+			(order.approval_note || '').trim()
+				? `<div class="ds-crm-order-notes"><span class="ds-crm-meta-label">Approval note</span><p>${escapeHtml(order.approval_note)}</p></div>`
+				: '';
 
-		return `${workflowNotice}${lockedNotice}<div class="ds-crm-order-meta-grid">${metaItems.join('')}</div>${notesBlock}`;
+		return `${workflowNotice}${lockedNotice}<div class="ds-crm-order-meta-grid">${metaItems.join('')}</div>${notesBlock}${approvalNoteBlock}`;
 	};
 
 	const renderOrderSummarySections = ({

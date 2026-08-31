@@ -24,7 +24,7 @@ $requested_tab   = isset( $_GET['payments_tab'] ) ? sanitize_key( wp_unslash( $_
 $active_tab      = ( $show_suppliers && 'suppliers' === $requested_tab ) ? 'suppliers' : 'clients';
 $preset_company  = isset( $_GET['company_id'] ) ? absint( $_GET['company_id'] ) : 0;
 $col_count       = $is_client ? 7 : 9;
-$supplier_cols   = 8;
+$supplier_cols   = 9;
 ?>
 <div class="ds-crm-module-page" data-crm-module="payments"
 	data-is-client="<?php echo $is_client ? '1' : '0'; ?>"
@@ -134,9 +134,12 @@ $supplier_cols   = 8;
 		</div>
 
 		<div class="ds-crm-toolbar">
-			<input type="search" class="ds-crm-search" placeholder="<?php esc_attr_e( 'Search payment #, company, reference…', 'ds-prod-import-crm' ); ?>" />
+			<input type="search" class="ds-crm-search" placeholder="<?php esc_attr_e( 'Search payment #, company, client, reference…', 'ds-prod-import-crm' ); ?>" />
 			<select class="ds-crm-filter-company">
 				<option value=""><?php esc_html_e( 'All companies', 'ds-prod-import-crm' ); ?></option>
+			</select>
+			<select class="ds-crm-filter-supplier-client" hidden>
+				<option value=""><?php esc_html_e( 'All clients', 'ds-prod-import-crm' ); ?></option>
 			</select>
 			<input type="date" class="ds-crm-date-from" aria-label="<?php esc_attr_e( 'From date', 'ds-prod-import-crm' ); ?>" />
 			<input type="date" class="ds-crm-date-to" aria-label="<?php esc_attr_e( 'To date', 'ds-prod-import-crm' ); ?>" />
@@ -153,6 +156,7 @@ $supplier_cols   = 8;
 					<tr>
 						<th><?php esc_html_e( 'Payment #', 'ds-prod-import-crm' ); ?></th>
 						<th><?php esc_html_e( 'Company', 'ds-prod-import-crm' ); ?></th>
+						<th><?php esc_html_e( 'Client', 'ds-prod-import-crm' ); ?></th>
 						<th><?php esc_html_e( 'Date & time', 'ds-prod-import-crm' ); ?></th>
 						<th class="ds-crm-amount-col"><?php esc_html_e( 'Amount', 'ds-prod-import-crm' ); ?></th>
 						<th><?php esc_html_e( 'Method', 'ds-prod-import-crm' ); ?></th>
@@ -283,6 +287,13 @@ $supplier_cols   = 8;
 					<select id="supplier-payment-company" name="company_id" required>
 						<option value=""><?php esc_html_e( 'Select company…', 'ds-prod-import-crm' ); ?></option>
 					</select>
+				</p>
+				<p>
+					<label for="supplier-payment-client"><?php esc_html_e( 'Client (optional)', 'ds-prod-import-crm' ); ?></label>
+					<select id="supplier-payment-client" name="client_id">
+						<option value=""><?php esc_html_e( 'General — all clients / company bill', 'ds-prod-import-crm' ); ?></option>
+					</select>
+					<span class="description"><?php esc_html_e( 'Tag which client this payment is for. Shows that client’s shipping due for this company.', 'ds-prod-import-crm' ); ?></span>
 				</p>
 				<div class="ds-crm-payment-supplier-preview" hidden>
 					<div class="ds-crm-payment-supplier-preview-inner"></div>

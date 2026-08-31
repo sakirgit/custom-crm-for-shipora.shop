@@ -38,13 +38,13 @@
 	};
 
 	const headers = {
-		payments: ['Payment #', 'Date', 'Amount', 'Method', 'Reference', 'Notes'],
+		payments: ['Payment #', 'Client', 'Date', 'Amount', 'Method', 'Reference', 'Notes'],
 		receives: ['Receive #', 'Date', 'Client', 'Order', 'Shipment', 'Total KG', 'Shipping bill'],
 		bills: ['Date', 'Amount', 'Reference', 'Notes'],
 	};
 
 	const searchPlaceholders = {
-		payments: 'Search payment #, method, reference…',
+		payments: 'Search payment #, client, method, reference…',
 		receives: 'Search receive #, client, shipment…',
 		bills: 'Search reference or notes…',
 	};
@@ -97,8 +97,8 @@
 			searchInput.placeholder = searchPlaceholders[section] || 'Search this table…';
 		}
 		if (filterClient) {
-			filterClient.hidden = section !== 'receives';
-			if (section !== 'receives') {
+			filterClient.hidden = section !== 'receives' && section !== 'payments';
+			if (section !== 'receives' && section !== 'payments') {
 				state.clientId = '';
 				filterClient.value = '';
 			}
@@ -123,6 +123,7 @@
 				.map(
 					(p) => `<tr>
 						<td>${escapeHtml(p.payment_number || '—')}</td>
+						<td>${escapeHtml(p.client_name || '—')}</td>
 						<td class="ds-crm-datetime">${formatListDateTime(p, 'payment_date')}</td>
 						<td class="ds-crm-amount-cell">${formatAmount(p.amount)}</td>
 						<td>${escapeHtml((p.payment_method || '—').replace(/_/g, ' '))}</td>
@@ -209,7 +210,7 @@
 			per_page: state.perPage,
 		};
 
-		if (state.section === 'receives' && state.clientId) {
+		if ((state.section === 'receives' || state.section === 'payments') && state.clientId) {
 			payload.client_id = state.clientId;
 		}
 
@@ -220,7 +221,7 @@
 			return;
 		}
 
-		if (state.section === 'receives') {
+		if (state.section === 'receives' || state.section === 'payments') {
 			fillClientFilter(result.data.filter_clients || []);
 		}
 

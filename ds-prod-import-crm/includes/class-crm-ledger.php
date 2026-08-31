@@ -406,6 +406,80 @@ class CRM_Ledger {
 	}
 
 	/**
+	 * Client-specific shipping totals and payments for one supplier company.
+	 *
+	 * Uses warehouse receives linked to the client (shipment → order → client).
+	 *
+	 * @param int $company_id Company ID.
+	 * @param int $client_id  Client ID.
+	 * @return array<string, float|int>
+	 */
+	public static function get_company_client_summary( $company_id, $client_id ) {
+		global $wpdb;
+
+		$company_id = absint( $company_id );
+		$client_id  = absint( $client_id );
+		if ( $company_id < 1 || $client_id < 1 ) {
+			return array(
+				'shipping_bill' => 0.0,
+				'total_paid'    => 0.0,
+				'total_due'     => 0.0,
+				'receive_count' => 0,
+			);
+		}
+
+		$receives_table         = crm_table( 'warehouse_receives' );
+		$shipments_table        = crm_table( 'export_shipments' );
+		$orders_table           = crm_table( 'orders' );
+		$company_payments_table = crm_table( 'company_payments' );
+		$order_expr             = 'COALESCE(NULLIF(s.order_id, 0), NULLIF(r.order_id, 0))';
+
+		$shipping_bill = (float) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COALESCE(SUM(r.shipping_bill), 0)
+				FROM {$receives_table} r
+				LEFT JOIN {$shipments_table} s ON s.id = r.shipment_id
+				LEFT JOIN {$orders_table} o ON o.id = {$order_expr}
+				WHERE r.company_id = %d AND o.client_id = %d",
+				$company_id,
+				$client_id
+			)
+		);
+
+		$receive_count = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*)
+				FROM {$receives_table} r
+				LEFT JOIN {$shipments_table} s ON s.id = r.shipment_id
+				LEFT JOIN {$orders_table} o ON o.id = {$order_expr}
+				WHERE r.company_id = %d AND o.client_id = %d",
+				$company_id,
+				$client_id
+			)
+		);
+
+		$total_paid = (float) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COALESCE(SUM(amount), 0) FROM {$company_payments_table}
+				WHERE company_id = %d AND client_id = %d",
+				$company_id,
+				$client_id
+			)
+		);
+
+		$shipping_bill = round( max( 0, $shipping_bill ), 2 );
+		$total_paid    = round( max( 0, $total_paid ), 2 );
+
+		return array(
+			'shipping_bill' => $shipping_bill,
+			'total_bill'    => $shipping_bill,
+			'total_paid'    => $total_paid,
+			'total_due'     => round( max( 0, $shipping_bill - $total_paid ), 2 ),
+			'receive_count' => $receive_count,
+		);
+	}
+
+	/**
 	 * Global supplier billing totals (all shipping companies).
 	 *
 	 * @return array<string, float>
