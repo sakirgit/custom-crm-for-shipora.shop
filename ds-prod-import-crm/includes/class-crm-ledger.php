@@ -410,11 +410,12 @@ class CRM_Ledger {
 	 *
 	 * Uses warehouse receives linked to the client (shipment → order → client).
 	 *
-	 * @param int $company_id Company ID.
-	 * @param int $client_id  Client ID.
+	 * @param int                $company_id Company ID.
+	 * @param int                $client_id  Client ID.
+	 * @param array<string, string> $dates   Optional date_from / date_to (Y-m-d).
 	 * @return array<string, float|int>
 	 */
-	public static function get_company_client_summary( $company_id, $client_id ) {
+	public static function get_company_client_summary( $company_id, $client_id, $dates = array() ) {
 		global $wpdb;
 
 		$company_id = absint( $company_id );
@@ -434,15 +435,37 @@ class CRM_Ledger {
 		$company_payments_table = crm_table( 'company_payments' );
 		$order_expr             = 'COALESCE(NULLIF(s.order_id, 0), NULLIF(r.order_id, 0))';
 
+		$receive_where  = array( 'r.company_id = %d', 'o.client_id = %d' );
+		$receive_params = array( $company_id, $client_id );
+		$payment_where  = array( 'company_id = %d', 'client_id = %d' );
+		$payment_params = array( $company_id, $client_id );
+
+		$date_from = isset( $dates['date_from'] ) ? (string) $dates['date_from'] : '';
+		$date_to   = isset( $dates['date_to'] ) ? (string) $dates['date_to'] : '';
+		if ( $date_from ) {
+			$receive_where[]  = 'r.receive_date >= %s';
+			$receive_params[] = $date_from;
+			$payment_where[]  = 'payment_date >= %s';
+			$payment_params[] = $date_from;
+		}
+		if ( $date_to ) {
+			$receive_where[]  = 'r.receive_date <= %s';
+			$receive_params[] = $date_to;
+			$payment_where[]  = 'payment_date <= %s';
+			$payment_params[] = $date_to;
+		}
+
+		$receive_where_sql = implode( ' AND ', $receive_where );
+		$payment_where_sql = implode( ' AND ', $payment_where );
+
 		$shipping_bill = (float) $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COALESCE(SUM(r.shipping_bill), 0)
 				FROM {$receives_table} r
 				LEFT JOIN {$shipments_table} s ON s.id = r.shipment_id
 				LEFT JOIN {$orders_table} o ON o.id = {$order_expr}
-				WHERE r.company_id = %d AND o.client_id = %d",
-				$company_id,
-				$client_id
+				WHERE {$receive_where_sql}",
+				$receive_params
 			)
 		);
 
@@ -452,18 +475,16 @@ class CRM_Ledger {
 				FROM {$receives_table} r
 				LEFT JOIN {$shipments_table} s ON s.id = r.shipment_id
 				LEFT JOIN {$orders_table} o ON o.id = {$order_expr}
-				WHERE r.company_id = %d AND o.client_id = %d",
-				$company_id,
-				$client_id
+				WHERE {$receive_where_sql}",
+				$receive_params
 			)
 		);
 
 		$total_paid = (float) $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COALESCE(SUM(amount), 0) FROM {$company_payments_table}
-				WHERE company_id = %d AND client_id = %d",
-				$company_id,
-				$client_id
+				WHERE {$payment_where_sql}",
+				$payment_params
 			)
 		);
 

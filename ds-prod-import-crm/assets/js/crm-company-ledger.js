@@ -7,6 +7,7 @@
 	}
 
 	const { postAjax, debounce, formatDate, formatListDateTime, formatAmount, formatWeight, DsCrmUI } = DsCrm;
+	const branding = window.DsCrmApp?.branding || {};
 
 	const companyId = parseInt(root.dataset.companyId, 10) || 0;
 	const canManageBilling = root.dataset.canManageBilling === '1';
@@ -25,16 +26,23 @@
 	const searchInput = root.querySelector('.ds-crm-search');
 	const filterClient = root.querySelector('.ds-crm-filter-client');
 	const billForm = root.querySelector('.ds-crm-ledger-bill-form');
+	const clientPanel = root.querySelector('.ds-crm-ledger-client-panel');
+	const clientPanelMeta = root.querySelector('.ds-crm-ledger-client-panel-meta');
+	const clientStats = root.querySelector('.ds-crm-ledger-client-stats');
+	const clientPaymentsBody = root.querySelector('.ds-crm-ledger-client-payments-table tbody');
+	const clientPdfBtn = root.querySelector('.ds-crm-ledger-client-pdf');
 
 	const state = {
 		section: root.dataset.ledgerSection || 'payments',
 		page: 1,
 		perPage: 25,
 		search: '',
-		clientId: '',
+		clientId: root.dataset.clientId || '',
 		dateFrom: '',
 		dateTo: '',
 		totalPages: 1,
+		company: null,
+		lastClientInvoice: null,
 	};
 
 	const headers = {
@@ -55,6 +63,24 @@
 		return div.innerHTML;
 	};
 
+	const slugifyFilenamePart = (value, fallback = 'report') => {
+		const slug = String(value ?? '')
+			.trim()
+			.replace(/[^\w\s-]/g, '')
+			.replace(/\s+/g, '-')
+			.replace(/-+/g, '-')
+			.replace(/^-|-$/g, '');
+		return slug || fallback;
+	};
+
+	const datePartForFilename = (value) => {
+		if (!value) {
+			return '';
+		}
+		const match = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
+		return match ? match[1] : '';
+	};
+
 	const companyTypeLabel = (type) => {
 		if (type === 'local_supplier') return 'Local supplier';
 		if (type === 'cargo') return 'Cargo';
@@ -67,6 +93,11 @@
 	const syncSectionUrl = () => {
 		const url = new URL(window.location.href);
 		url.searchParams.set('ledger_section', state.section);
+		if (state.section === 'receives' && state.clientId) {
+			url.searchParams.set('client_id', state.clientId);
+		} else {
+			url.searchParams.delete('client_id');
+		}
 		window.history.replaceState({}, '', url.toString());
 	};
 
@@ -87,6 +118,123 @@
 		}
 	};
 
+	const hideClientPanel = () => {
+		if (clientPanel) {
+			clientPanel.hidden = true;
+		}
+		state.lastClientInvoice = null;
+	};
+
+	const renderClientPayments = (payments) => {
+		if (!clientPaymentsBody) {
+			return;
+		}
+		if (!payments?.length) {
+			clientPaymentsBody.innerHTML =
+				'<tr><td colspan="6" class="ds-crm-empty">No payments tagged to this client in this period.</td></tr>';
+			return;
+		}
+
+		clientPaymentsBody.innerHTML = payments
+			.map(
+				(p) => `<tr>
+					<td>${escapeHtml(p.payment_number || '—')}</td>
+					<td class="ds-crm-datetime">${formatListDateTime(p, 'payment_date')}</td>
+					<td class="ds-crm-amount-cell">${formatAmount(p.amount)}</td>
+					<td>${escapeHtml((p.payment_method || '—').replace(/_/g, ' '))}</td>
+					<td>${escapeHtml(p.reference || '—')}</td>
+					<td>${escapeHtml(p.notes || '—')}</td>
+				</tr>`
+			)
+			.join('');
+	};
+
+	const renderClientPanel = (data) => {
+		if (!clientPanel || state.section !== 'receives' || !state.clientId) {
+			hideClientPanel();
+			return;
+		}
+
+		const client = data?.client;
+		const summary = data?.client_summary;
+		if (!client || !summary) {
+			hideClientPanel();
+			return;
+		}
+
+		const dueClass = summary.total_due > 0 ? 'ds-crm-stat-card--due' : 'ds-crm-stat-card--ok';
+		const metaParts = [client.phone, client.email].filter(Boolean).map((v) => escapeHtml(v));
+		if (clientPanelMeta) {
+			clientPanelMeta.innerHTML = `<strong>${escapeHtml(client.name)}</strong>${
+				metaParts.length ? ` · ${metaParts.join(' · ')}` : ''
+			}${client.address ? `<br>${escapeHtml(client.address)}` : ''}`;
+		}
+
+		if (clientStats) {
+			clientStats.innerHTML = `
+				${statCard('Shipping bill', formatAmount(summary.shipping_bill))}
+				${statCard('Paid', formatAmount(summary.total_paid))}
+				${statCard('Due', formatAmount(summary.total_due), dueClass)}
+				${statCard('Receives', String(summary.receive_count || 0))}
+			`;
+		}
+
+		renderClientPayments(data.client_payments || []);
+		clientPanel.hidden = false;
+	};
+
+	const buildInvoiceFilename = (invoice) => {
+		const company = slugifyFilenamePart(invoice?.company?.name, 'Company');
+		const client = slugifyFilenamePart(invoice?.client?.name, 'Client');
+		const from = datePartForFilename(invoice?.date_from);
+		const to = datePartForFilename(invoice?.date_to);
+		let range = 'all-dates';
+		if (from && to) {
+			range = `${from}_to_${to}`;
+		} else if (from) {
+			range = `from_${from}`;
+		} else if (to) {
+			range = `to_${to}`;
+		}
+		return `Cargo-Invoice_${company}_${client}_${range}`;
+	};
+
+	const printClientInvoice = async () => {
+		if (!state.clientId || state.section !== 'receives') {
+			DsCrmUI.toast('Select a client on the Warehouse receives tab first.', 'error');
+			return;
+		}
+
+		if (clientPdfBtn) {
+			clientPdfBtn.disabled = true;
+		}
+
+		const result = await postAjax('crm_companies_ledger_client_invoice', {
+			company_id: companyId,
+			client_id: state.clientId,
+			search: state.search,
+			date_from: state.dateFrom,
+			date_to: state.dateTo,
+		});
+
+		if (clientPdfBtn) {
+			clientPdfBtn.disabled = false;
+		}
+
+		if (!result.success) {
+			DsCrmUI.toast(result.data?.message || 'Failed to load invoice.', 'error');
+			return;
+		}
+
+		const invoice = result.data;
+		state.lastClientInvoice = invoice;
+		DsCrmUI.printClientCargoInvoice({
+			invoice,
+			branding,
+			filename: buildInvoiceFilename(invoice),
+		});
+	};
+
 	const setSection = (section) => {
 		state.section = section;
 		root.dataset.ledgerSection = section;
@@ -102,6 +250,9 @@
 				state.clientId = '';
 				filterClient.value = '';
 			}
+		}
+		if (section !== 'receives') {
+			hideClientPanel();
 		}
 		syncSectionUrl();
 	};
@@ -172,6 +323,7 @@
 		}
 
 		const { company, summary } = result.data;
+		state.company = company;
 		if (titleEl) {
 			titleEl.textContent = `Ledger — ${company.name}`;
 		}
@@ -218,6 +370,7 @@
 
 		if (!result.success) {
 			tbody.innerHTML = `<tr><td colspan="${colspan()}">${escapeHtml(result.data?.message || 'Failed to load.')}</td></tr>`;
+			hideClientPanel();
 			return;
 		}
 
@@ -226,6 +379,13 @@
 		}
 
 		renderRows(result.data.items || []);
+
+		if (state.section === 'receives') {
+			renderClientPanel(result.data);
+		} else {
+			hideClientPanel();
+		}
+
 		state.totalPages = result.data.total_pages || 1;
 		paginationEl.hidden = state.totalPages <= 1 && !result.data.total;
 		pageInfo.textContent = `Page ${result.data.page} of ${state.totalPages} (${result.data.total} total)`;
@@ -261,6 +421,7 @@
 	filterClient?.addEventListener('change', (e) => {
 		state.clientId = e.target.value;
 		state.page = 1;
+		syncSectionUrl();
 		loadEntries();
 	});
 
@@ -295,6 +456,8 @@
 			loadEntries();
 		}
 	});
+
+	clientPdfBtn?.addEventListener('click', printClientInvoice);
 
 	billForm?.addEventListener('submit', async (event) => {
 		event.preventDefault();
@@ -342,6 +505,9 @@
 		}
 
 		setSection(state.section);
+		if (filterClient && state.clientId) {
+			filterClient.value = String(state.clientId);
+		}
 		const ok = await loadHeader();
 		if (ok) {
 			await loadEntries();

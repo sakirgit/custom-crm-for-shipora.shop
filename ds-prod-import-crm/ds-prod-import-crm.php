@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Product stock and order managment CRM
  * Description: China import CRM for orders, stock, delivery, billing, and reports.
- * Version: 0.19.0
+ * Version: 0.20.0
  * Author: Developer-S.com Team
  * Text Domain: ds-prod-import-crm
  * Domain Path: /languages

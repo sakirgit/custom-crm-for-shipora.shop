@@ -931,6 +931,321 @@ const DsCrmUI = {
 		}
 	},
 
+	printClientCargoInvoice({ invoice, branding = {}, filename = '' }) {
+		const { formatAmount, formatDate, formatDateTime, formatWeight } = window.DsCrm;
+		if (!invoice?.client || !invoice?.company) {
+			this.toast('Invoice data is incomplete.', 'error');
+			return;
+		}
+
+		const colors = branding.colors || invoice.branding?.colors || {};
+		const accent = colors.accent || '#2563eb';
+		const accentSecondary = colors.accent_secondary || '#7c3aed';
+		const companyName = branding.company_name || invoice.branding?.company_name || 'CRM';
+		const tagline = branding.company_tagline || invoice.branding?.company_tagline || '';
+		const logoUrl = branding.logo_url || invoice.branding?.logo_url || '';
+
+		const toAbsoluteUrl = (url) => {
+			const raw = String(url || '').trim();
+			if (!raw) {
+				return '';
+			}
+			try {
+				return new URL(raw, window.location.href).href;
+			} catch {
+				return raw;
+			}
+		};
+
+		const companyTypeLabel = (type) => {
+			if (type === 'local_supplier') return 'Local supplier';
+			if (type === 'cargo') return 'Cargo company';
+			return type || 'Supplier';
+		};
+
+		const formatRange = (from, to) => {
+			if (from && to) {
+				return `${formatDate(from)} – ${formatDate(to)}`;
+			}
+			if (from) {
+				return `From ${formatDate(from)}`;
+			}
+			if (to) {
+				return `Until ${formatDate(to)}`;
+			}
+			return 'All dates';
+		};
+
+		const company = invoice.company;
+		const client = invoice.client;
+		const summary = invoice.summary || {};
+		const receives = invoice.receives || [];
+		const payments = invoice.payments || [];
+		const periodLabel = formatRange(invoice.date_from, invoice.date_to);
+		const generatedAt = formatDateTime(new Date().toISOString());
+
+		const receiveRows = receives.length
+			? receives
+					.map(
+						(r) => `<tr>
+					<td>${this.escapeHtml(r.receive_number || '—')}</td>
+					<td>${formatDate(r.receive_date)}</td>
+					<td>${this.escapeHtml(r.order_number || '—')}</td>
+					<td>${this.escapeHtml(r.shipment_number || '—')}</td>
+					<td>${formatWeight(r.total_kg, { withUnit: true })}</td>
+					<td class="num">${formatAmount(r.shipping_bill)}</td>
+				</tr>`
+					)
+					.join('')
+			: '<tr><td colspan="6" class="empty">No warehouse receives in this period.</td></tr>';
+
+		const paymentRows = payments.length
+			? payments
+					.map(
+						(p) => `<tr>
+					<td>${this.escapeHtml(p.payment_number || '—')}</td>
+					<td>${formatDate(p.payment_date)}</td>
+					<td class="num">${formatAmount(p.amount)}</td>
+					<td>${this.escapeHtml((p.payment_method || '—').replace(/_/g, ' '))}</td>
+					<td>${this.escapeHtml(p.reference || '—')}</td>
+					<td>${this.escapeHtml(p.notes || '—')}</td>
+				</tr>`
+					)
+					.join('')
+			: '<tr><td colspan="6" class="empty">No payments in this period.</td></tr>';
+
+		const absoluteLogoUrl = toAbsoluteUrl(logoUrl);
+		const logoHtml = absoluteLogoUrl
+			? `<div class="brand-logo-wrap"><img src="${this.escapeHtml(absoluteLogoUrl)}" alt="" class="brand-logo" decoding="sync" /></div>`
+			: `<div class="brand-logo brand-logo--placeholder">${this.escapeHtml(companyName.charAt(0))}</div>`;
+
+		const printFileName =
+			filename ||
+			`Cargo-Invoice_${String(company.name || 'Company').replace(/[<>:"/\\|?*\s]+/g, '-')}_${String(client.name || 'Client').replace(/[<>:"/\\|?*\s]+/g, '-')}`;
+		const printTitle = this.escapeHtml(printFileName);
+
+		const html = `<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${printTitle}</title>
+			<style>
+				:root{--accent:${accent};--accent-secondary:${accentSecondary}}
+				*{box-sizing:border-box}
+				body{font-family:system-ui,-apple-system,sans-serif;color:#111827;margin:0;font-size:13px;line-height:1.45;background:#fff}
+				.sheet{padding:28px 32px;max-width:900px;margin:0 auto}
+				.brand-bar{display:flex;align-items:center;gap:20px;padding:0 0 18px;margin-bottom:20px;border-bottom:3px solid var(--accent)}
+				.brand-logo-wrap{display:flex;align-items:center;justify-content:center;flex-shrink:0;min-width:120px;min-height:72px;padding:8px 12px;background:#fff;border-radius:10px;border:1px solid #e5e7eb}
+				.brand-logo{display:block;width:auto;height:auto;max-width:180px;max-height:72px;object-fit:contain}
+				.brand-logo--placeholder{display:flex;align-items:center;justify-content:center;width:72px;height:72px;background:var(--accent);color:#fff;font-size:28px;font-weight:700;border-radius:10px;flex-shrink:0}
+				.brand-text h1{margin:0;font-size:20px;color:#111827;font-weight:700}
+				.brand-text p{margin:4px 0 0;color:#6b7280;font-size:12px}
+				.invoice-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:22px}
+				.invoice-head h2{margin:0;font-size:22px;font-weight:700;color:var(--accent);letter-spacing:.02em}
+				.invoice-head .invoice-meta{text-align:right;font-size:12px;color:#6b7280;line-height:1.6}
+				.invoice-head .invoice-meta strong{display:block;color:#111827;font-size:13px}
+				.party-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+				.party-card{border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;background:#fafafa}
+				.party-card h3{margin:0 0 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280}
+				.party-card .name{font-size:15px;font-weight:700;color:#111827;margin-bottom:4px}
+				.party-card .detail{font-size:12px;color:#4b5563;line-height:1.5}
+				.summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:24px}
+				.summary-card{border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;background:#fff}
+				.summary-card.due{border-color:color-mix(in srgb,var(--accent-secondary) 35%,#e5e7eb);background:color-mix(in srgb,var(--accent-secondary) 6%,#fff)}
+				.summary-label{display:block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6b7280;margin-bottom:4px}
+				.summary-value{font-size:16px;font-weight:700;color:#111827}
+				.summary-card.due .summary-value{color:var(--accent-secondary)}
+				.section{margin-top:20px;break-inside:avoid}
+				.section h4{margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent-secondary);border-bottom:1px solid #e5e7eb;padding-bottom:6px}
+				table{width:100%;border-collapse:collapse;margin-top:4px}
+				th,td{border:1px solid #e5e7eb;padding:8px 10px;text-align:left;vertical-align:top;font-size:12px}
+				th{background:color-mix(in srgb,var(--accent) 6%,#f9fafb);font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#374151;font-weight:700}
+				td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+				td.empty{color:#9ca3af;font-style:italic;text-align:center}
+				.totals-box{margin-top:24px;margin-left:auto;max-width:320px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden}
+				.totals-box div{display:flex;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #f3f4f6;font-size:13px}
+				.totals-box .grand{font-weight:700;background:color-mix(in srgb,var(--accent) 8%,#fff);border-top:2px solid var(--accent)}
+				.totals-box .due-row{font-weight:700;color:var(--accent-secondary);background:color-mix(in srgb,var(--accent-secondary) 6%,#fff)}
+				.doc-footer{margin-top:28px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;text-align:center}
+				@media print{
+					body{margin:0}
+					.sheet{padding:16px 20px;max-width:none}
+					.brand-bar,.summary-card.due,.totals-box .due-row{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+					th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+					img{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+				}
+			</style></head><body>
+			<div class="sheet">
+				<div class="brand-bar">
+					${logoHtml}
+					<div class="brand-text">
+						<h1>${this.escapeHtml(companyName)}</h1>
+						${tagline ? `<p>${this.escapeHtml(tagline)}</p>` : ''}
+					</div>
+				</div>
+
+				<div class="invoice-head">
+					<h2>Cargo Shipping Invoice</h2>
+					<div class="invoice-meta">
+						<strong>${this.escapeHtml(client.name || '—')}</strong>
+						Period: ${this.escapeHtml(periodLabel)}<br />
+						Generated: ${generatedAt}
+					</div>
+				</div>
+
+				<div class="party-grid">
+					<div class="party-card">
+						<h3>Bill to</h3>
+						<div class="name">${this.escapeHtml(client.name || '—')}</div>
+						<div class="detail">
+							${client.phone ? `${this.escapeHtml(client.phone)}<br />` : ''}
+							${client.email ? `${this.escapeHtml(client.email)}<br />` : ''}
+							${client.address ? this.escapeHtml(client.address) : ''}
+						</div>
+					</div>
+					<div class="party-card">
+						<h3>Cargo / supplier</h3>
+						<div class="name">${this.escapeHtml(company.name || '—')}</div>
+						<div class="detail">
+							${this.escapeHtml(companyTypeLabel(company.company_type))}
+							${company.phone ? `<br />${this.escapeHtml(company.phone)}` : ''}
+							${company.contact_person ? `<br />${this.escapeHtml(company.contact_person)}` : ''}
+						</div>
+					</div>
+				</div>
+
+				<div class="summary-grid">
+					<div class="summary-card">
+						<span class="summary-label">Shipping bill</span>
+						<span class="summary-value">${formatAmount(summary.shipping_bill)}</span>
+					</div>
+					<div class="summary-card">
+						<span class="summary-label">Paid</span>
+						<span class="summary-value">${formatAmount(summary.total_paid)}</span>
+					</div>
+					<div class="summary-card due">
+						<span class="summary-label">Amount due</span>
+						<span class="summary-value">${formatAmount(summary.total_due)}</span>
+					</div>
+					<div class="summary-card">
+						<span class="summary-label">Receives</span>
+						<span class="summary-value">${summary.receive_count || 0}</span>
+					</div>
+				</div>
+
+				<div class="section">
+					<h4>Warehouse receives</h4>
+					<table>
+						<thead><tr><th>Receive #</th><th>Date</th><th>Order</th><th>Shipment</th><th>Total KG</th><th>Shipping bill</th></tr></thead>
+						<tbody>${receiveRows}</tbody>
+					</table>
+				</div>
+
+				<div class="section">
+					<h4>Payments</h4>
+					<table>
+						<thead><tr><th>Payment #</th><th>Date</th><th>Amount</th><th>Method</th><th>Reference</th><th>Notes</th></tr></thead>
+						<tbody>${paymentRows}</tbody>
+					</table>
+				</div>
+
+				<div class="totals-box">
+					<div><span>Shipping bill</span><span>${formatAmount(summary.shipping_bill)}</span></div>
+					<div><span>Paid</span><span>${formatAmount(summary.total_paid)}</span></div>
+					<div class="due-row"><span>Amount due</span><span>${formatAmount(summary.total_due)}</span></div>
+				</div>
+
+				<div class="doc-footer">${this.escapeHtml(companyName)} · Cargo shipping invoice · ${this.escapeHtml(periodLabel)}</div>
+			</div>
+			</body></html>`;
+
+		const frame = document.createElement('iframe');
+		frame.setAttribute('aria-hidden', 'true');
+		frame.setAttribute('title', `Print invoice ${printFileName}`);
+		frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;height:1200px;border:0;opacity:0;pointer-events:none;';
+		document.body.appendChild(frame);
+
+		const printWin = frame.contentWindow;
+		const doc = frame.contentDocument || printWin?.document;
+		if (!doc || !printWin) {
+			frame.remove();
+			this.toast('Unable to open print view.', 'error');
+			return;
+		}
+
+		const originalTitle = document.title;
+		const restoreTitle = () => {
+			document.title = originalTitle;
+		};
+
+		doc.open();
+		doc.write(html);
+		doc.close();
+		doc.title = printFileName;
+
+		const cleanup = () => {
+			restoreTitle();
+			setTimeout(() => frame.remove(), 100);
+		};
+
+		const waitForImages = () => {
+			const imgs = Array.from(doc.images || []);
+			if (!imgs.length) {
+				return Promise.resolve();
+			}
+			return Promise.all(
+				imgs.map(
+					(img) =>
+						new Promise((resolve) => {
+							let settled = false;
+							const done = () => {
+								if (settled) {
+									return;
+								}
+								settled = true;
+								resolve();
+							};
+							if (img.complete && img.naturalWidth > 0) {
+								done();
+								return;
+							}
+							img.addEventListener('load', done, { once: true });
+							img.addEventListener('error', done, { once: true });
+							const src = img.getAttribute('src') || img.src;
+							if (src) {
+								img.src = '';
+								img.src = src;
+							}
+							setTimeout(done, 4000);
+						})
+				)
+			);
+		};
+
+		const runPrint = () => {
+			try {
+				document.title = printFileName;
+				printWin.addEventListener('afterprint', cleanup, { once: true });
+				printWin.focus();
+				printWin.print();
+				if (!('onafterprint' in printWin)) {
+					setTimeout(cleanup, 2000);
+				}
+			} catch (error) {
+				cleanup();
+				this.toast('Print failed. Try again.', 'error');
+			}
+		};
+
+		const startPrint = () => {
+			waitForImages().then(() => {
+				setTimeout(runPrint, 150);
+			});
+		};
+
+		if (printWin.document?.readyState === 'complete') {
+			startPrint();
+		} else {
+			frame.onload = startPrint;
+		}
+	},
+
 	toast(message, type = 'success') {
 		let container = document.querySelector('.ds-crm-toast-container');
 		if (!container) {

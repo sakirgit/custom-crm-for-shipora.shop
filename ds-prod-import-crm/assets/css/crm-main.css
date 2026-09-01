@@ -2047,6 +2047,51 @@ body.ds-crm-nav-open {
 	margin: 0 0 12px;
 }
 
+.ds-crm-ledger-client-panel {
+	margin: 0 0 20px;
+	padding: 16px 18px;
+	border: 1px solid var(--ds-crm-border, #e5e7eb);
+	border-radius: 10px;
+	background: #f9fafb;
+}
+
+.ds-crm-ledger-client-panel-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+	flex-wrap: wrap;
+	margin-bottom: 14px;
+}
+
+.ds-crm-ledger-client-panel-title {
+	margin: 0 0 4px;
+	font-size: 16px;
+	font-weight: 700;
+	color: var(--ds-crm-text);
+}
+
+.ds-crm-ledger-client-panel-meta {
+	margin: 0;
+}
+
+.ds-crm-ledger-client-summary {
+	margin-bottom: 16px;
+}
+
+.ds-crm-ledger-client-payments h4 {
+	margin: 0 0 10px;
+	font-size: 13px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #4b5563;
+}
+
+.ds-crm-ledger-client-pdf-hint {
+	margin: 12px 0 0;
+}
+
 .ds-crm-ledger-modal-body {
 	padding: 16px 20px 20px;
 	max-height: min(70vh, 720px);

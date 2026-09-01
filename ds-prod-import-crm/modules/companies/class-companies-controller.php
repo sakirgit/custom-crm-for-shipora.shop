@@ -32,6 +32,7 @@ class Companies_Controller extends CRM_Controller_Base {
 		add_action( 'wp_ajax_crm_companies_delete', array( __CLASS__, 'delete_item' ) );
 		add_action( 'wp_ajax_crm_companies_ledger', array( __CLASS__, 'ledger' ) );
 		add_action( 'wp_ajax_crm_companies_ledger_entries', array( __CLASS__, 'ledger_entries' ) );
+		add_action( 'wp_ajax_crm_companies_ledger_client_invoice', array( __CLASS__, 'ledger_client_invoice' ) );
 		add_action( 'wp_ajax_crm_companies_payment_save', array( __CLASS__, 'payment_save' ) );
 		add_action( 'wp_ajax_crm_companies_payment_delete', array( __CLASS__, 'payment_delete' ) );
 		add_action( 'wp_ajax_crm_companies_bill_save', array( __CLASS__, 'bill_save' ) );
@@ -501,17 +502,230 @@ class Companies_Controller extends CRM_Controller_Base {
 			$filter_clients = self::get_company_clients( $company_id );
 		}
 
-		wp_send_json_success(
+		$payload = array(
+			'section'        => $section,
+			'items'          => $items ? $items : array(),
+			'total'          => $total,
+			'page'           => $pagination['page'],
+			'per_page'       => $pagination['per_page'],
+			'total_pages'    => max( 1, $total_pages ),
+			'filter_clients' => $filter_clients ? $filter_clients : array(),
+		);
+
+		if ( 'receives' === $section ) {
+			$client_id = isset( $_POST['client_id'] ) ? absint( $_POST['client_id'] ) : 0;
+			if ( $client_id > 0 ) {
+				$client_context = self::get_client_cargo_context( $company_id, $client_id, $dates );
+				if ( $client_context ) {
+					$payload = array_merge( $payload, $client_context );
+				}
+			}
+		}
+
+		wp_send_json_success( $payload );
+	}
+
+	/**
+	 * Full client cargo invoice data for PDF export.
+	 *
+	 * @return void
+	 */
+	public static function ledger_client_invoice() {
+		self::verify_request_any(
 			array(
-				'section'         => $section,
-				'items'           => $items ? $items : array(),
-				'total'           => $total,
-				'page'            => $pagination['page'],
-				'per_page'        => $pagination['per_page'],
-				'total_pages'     => max( 1, $total_pages ),
-				'filter_clients'  => $filter_clients ? $filter_clients : array(),
+				'crm_companies_view',
+				'crm_manage_companies',
+				'crm_billing_view',
+				'crm_manage_billing',
 			)
 		);
+
+		global $wpdb;
+
+		$company_id = isset( $_POST['company_id'] ) ? absint( $_POST['company_id'] ) : 0;
+		$client_id  = isset( $_POST['client_id'] ) ? absint( $_POST['client_id'] ) : 0;
+		$search     = isset( $_POST['search'] ) ? sanitize_text_field( wp_unslash( $_POST['search'] ) ) : '';
+		$dates      = self::date_range_from_request();
+
+		if ( $company_id < 1 || $client_id < 1 ) {
+			wp_send_json_error( array( 'message' => __( 'Company and client are required.', 'ds-prod-import-crm' ) ) );
+		}
+
+		if ( ! self::company_has_client( $company_id, $client_id ) ) {
+			wp_send_json_error( array( 'message' => __( 'Selected client is not linked to this company.', 'ds-prod-import-crm' ) ) );
+		}
+
+		$company = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT id, name, company_type, phone, contact_person FROM ' . crm_table( 'companies' ) . ' WHERE id = %d',
+				$company_id
+			),
+			ARRAY_A
+		);
+
+		if ( ! $company ) {
+			wp_send_json_error( array( 'message' => __( 'Company not found.', 'ds-prod-import-crm' ) ) );
+		}
+
+		$client_context = self::get_client_cargo_context( $company_id, $client_id, $dates );
+		if ( ! $client_context ) {
+			wp_send_json_error( array( 'message' => __( 'Client not found.', 'ds-prod-import-crm' ) ) );
+		}
+
+		$receives = self::get_company_client_receives( $company_id, $client_id, $dates, $search );
+
+		wp_send_json_success(
+			array(
+				'report_type' => 'company_client_cargo_invoice',
+				'company'     => $company,
+				'client'      => $client_context['client'],
+				'summary'     => $client_context['client_summary'],
+				'payments'    => $client_context['client_payments'],
+				'receives'    => $receives,
+				'date_from'   => $dates['date_from'],
+				'date_to'     => $dates['date_to'],
+				'branding'    => crm_get_branding(),
+			)
+		);
+	}
+
+	/**
+	 * Client cargo context: profile, summary, and payments for a company.
+	 *
+	 * @param int                   $company_id Company ID.
+	 * @param int                   $client_id  Client ID.
+	 * @param array<string, string> $dates      Optional date range.
+	 * @return array<string, mixed>|null
+	 */
+	private static function get_client_cargo_context( $company_id, $client_id, $dates = array() ) {
+		global $wpdb;
+
+		$company_id = absint( $company_id );
+		$client_id  = absint( $client_id );
+		if ( $company_id < 1 || $client_id < 1 || ! self::company_has_client( $company_id, $client_id ) ) {
+			return null;
+		}
+
+		$client = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT id, name, phone, email, address FROM ' . crm_table( 'clients' ) . ' WHERE id = %d',
+				$client_id
+			),
+			ARRAY_A
+		);
+
+		if ( ! $client ) {
+			return null;
+		}
+
+		return array(
+			'client'          => $client,
+			'client_summary'  => CRM_Ledger::get_company_client_summary( $company_id, $client_id, $dates ),
+			'client_payments' => self::get_company_client_payments( $company_id, $client_id, $dates ),
+		);
+	}
+
+	/**
+	 * Supplier payments tagged to a client under a company.
+	 *
+	 * @param int                   $company_id Company ID.
+	 * @param int                   $client_id  Client ID.
+	 * @param array<string, string> $dates      Optional date range.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function get_company_client_payments( $company_id, $client_id, $dates = array() ) {
+		global $wpdb;
+
+		$table  = crm_table( 'company_payments' );
+		$where  = array( 'company_id = %d', 'client_id = %d' );
+		$params = array( absint( $company_id ), absint( $client_id ) );
+
+		if ( ! empty( $dates['date_from'] ) ) {
+			$where[]  = 'payment_date >= %s';
+			$params[] = $dates['date_from'];
+		}
+		if ( ! empty( $dates['date_to'] ) ) {
+			$where[]  = 'payment_date <= %s';
+			$params[] = $dates['date_to'];
+		}
+
+		$where_sql = implode( ' AND ', $where );
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, payment_number, payment_date, amount, payment_method, reference, notes
+				FROM {$table}
+				WHERE {$where_sql}
+				ORDER BY payment_date DESC, id DESC",
+				$params
+			),
+			ARRAY_A
+		);
+
+		return $rows ? $rows : array();
+	}
+
+	/**
+	 * Warehouse receives for a client under a company (unpaginated).
+	 *
+	 * @param int                   $company_id Company ID.
+	 * @param int                   $client_id  Client ID.
+	 * @param array<string, string> $dates      Optional date range.
+	 * @param string                $search     Optional search term.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function get_company_client_receives( $company_id, $client_id, $dates = array(), $search = '' ) {
+		global $wpdb;
+
+		$table         = crm_table( 'warehouse_receives' );
+		$clients_table = crm_table( 'clients' );
+		$ship_table    = crm_table( 'export_shipments' );
+		$orders_table  = crm_table( 'orders' );
+		$order_expr    = 'COALESCE(NULLIF(s.order_id, 0), NULLIF(r.order_id, 0))';
+
+		$where  = array( 'r.company_id = %d', 'o.client_id = %d' );
+		$params = array( absint( $company_id ), absint( $client_id ) );
+
+		if ( $search ) {
+			$like     = '%' . $wpdb->esc_like( $search ) . '%';
+			$where[]  = '(r.receive_number LIKE %s OR cl.name LIKE %s OR s.shipment_number LIKE %s OR o.order_number LIKE %s)';
+			$params[] = $like;
+			$params[] = $like;
+			$params[] = $like;
+			$params[] = $like;
+		}
+
+		if ( ! empty( $dates['date_from'] ) ) {
+			$where[]  = 'r.receive_date >= %s';
+			$params[] = $dates['date_from'];
+		}
+		if ( ! empty( $dates['date_to'] ) ) {
+			$where[]  = 'r.receive_date <= %s';
+			$params[] = $dates['date_to'];
+		}
+
+		$where_sql = implode( ' AND ', $where );
+		$from_sql  = "FROM {$table} r
+			LEFT JOIN {$ship_table} s ON s.id = r.shipment_id
+			LEFT JOIN {$orders_table} o ON o.id = {$order_expr}
+			LEFT JOIN {$clients_table} cl ON cl.id = o.client_id";
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT r.id, r.receive_number, r.receive_date, r.total_kg, r.shipping_bill,
+				r.shipment_id, s.shipment_number,
+				o.id AS order_id, o.order_number, o.client_id, cl.name AS client_name
+				{$from_sql}
+				WHERE {$where_sql}
+				ORDER BY r.receive_date DESC, r.id DESC",
+				$params
+			),
+			ARRAY_A
+		);
+
+		return $rows ? $rows : array();
 	}
 
 	/**

@@ -22,11 +22,13 @@ $section            = isset( $_GET['ledger_section'] ) ? sanitize_key( wp_unslas
 if ( ! in_array( $section, array( 'payments', 'receives', 'bills' ), true ) ) {
 	$section = 'payments';
 }
+$client_id = isset( $_GET['client_id'] ) ? absint( $_GET['client_id'] ) : 0;
 ?>
 <div class="ds-crm-module-page ds-crm-company-ledger-page" data-crm-module="companies-ledger"
 	data-company-id="<?php echo esc_attr( (string) $company_id ); ?>"
 	data-can-manage-billing="<?php echo $can_manage_billing ? '1' : '0'; ?>"
 	data-ledger-section="<?php echo esc_attr( $section ); ?>"
+	data-client-id="<?php echo esc_attr( (string) $client_id ); ?>"
 	data-payments-url="<?php echo esc_url( $payments_url ); ?>">
 	<div class="ds-crm-page-header ds-crm-order-form-heading">
 		<a class="ds-crm-back-link" href="<?php echo esc_url( $companies_url ); ?>">&larr; <?php esc_html_e( 'Back to companies', 'ds-prod-import-crm' ); ?></a>
@@ -103,6 +105,39 @@ if ( ! in_array( $section, array( 'payments', 'receives', 'bills' ), true ) ) {
 			<option value="25" selected>25</option>
 			<option value="50">50</option>
 		</select>
+	</div>
+
+	<div class="ds-crm-ledger-client-panel" hidden>
+		<div class="ds-crm-ledger-client-panel-head no-print">
+			<div>
+				<h3 class="ds-crm-ledger-client-panel-title"><?php esc_html_e( 'Client cargo account', 'ds-prod-import-crm' ); ?></h3>
+				<p class="description ds-crm-ledger-client-panel-meta"></p>
+			</div>
+			<button type="button" class="button button-primary ds-crm-ledger-client-pdf"><?php esc_html_e( 'Download PDF', 'ds-prod-import-crm' ); ?></button>
+		</div>
+		<div class="ds-crm-ledger-summary ds-crm-ledger-client-summary">
+			<h4 class="ds-crm-ledger-summary-title"><?php esc_html_e( 'Account summary', 'ds-prod-import-crm' ); ?></h4>
+			<div class="ds-crm-order-stats ds-crm-order-stats--compact ds-crm-ledger-client-stats"></div>
+		</div>
+		<section class="ds-crm-ledger-section ds-crm-ledger-client-payments">
+			<h4><?php esc_html_e( 'Payments (tagged to this client)', 'ds-prod-import-crm' ); ?></h4>
+			<div class="ds-crm-table-wrap">
+				<table class="ds-crm-table ds-crm-ledger-client-payments-table">
+					<thead>
+						<tr>
+							<th><?php esc_html_e( 'Payment #', 'ds-prod-import-crm' ); ?></th>
+							<th><?php esc_html_e( 'Date', 'ds-prod-import-crm' ); ?></th>
+							<th><?php esc_html_e( 'Amount', 'ds-prod-import-crm' ); ?></th>
+							<th><?php esc_html_e( 'Method', 'ds-prod-import-crm' ); ?></th>
+							<th><?php esc_html_e( 'Reference', 'ds-prod-import-crm' ); ?></th>
+							<th><?php esc_html_e( 'Notes', 'ds-prod-import-crm' ); ?></th>
+						</tr>
+					</thead>
+					<tbody></tbody>
+				</table>
+			</div>
+		</section>
+		<p class="description no-print ds-crm-ledger-client-pdf-hint"><?php esc_html_e( 'Use Download PDF to save this as a client invoice (browser print → Save as PDF).', 'ds-prod-import-crm' ); ?></p>
 	</div>
 
 	<div class="ds-crm-table-wrap">
